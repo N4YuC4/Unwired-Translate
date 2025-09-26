@@ -1,0 +1,44 @@
+# 1. Python ve Sanal Ortam Dosyaları
+venv/
+.venv
+env/
+*.env
+.env
+
+# Python'un derlenmiş bytecode ve cache dosyaları
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 2. Artefaktlar: Veri, Modeller ve Sonuçlar
+/artifacts/
+/models/
+
+# Araştırma belgeleri
+research_files/
+
+# Ham veri klasörü (DVC ile yönetilmesi şiddetle tavsiye edilir)
+/datasets/
+
+# 3. IDE ve Editör Konfigürasyon Dosyaları
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# 4. İşletim Sistemi Tarafından Üretilen Dosyalar
+.DS_Store
+Thumbs.db
+
+# 5. Jupyter Notebook Dosyaları
+notebooks
+
+# 6. Log Dosyaları
+*.log
+logs/
+
+# 7. Diğer Kurulum ve Paketleme Dosyaları
+build/
+dist/
+*.egg-info/

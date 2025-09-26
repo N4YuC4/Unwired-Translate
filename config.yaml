@@ -1,0 +1,20 @@
+project_name: "Translation-HPLT-EN-TR-V2"
+dataset:
+  path: "/kaggle/input/hplt-en-tr/" # Bu yolu kendi veri setinizin olduğu yer ile değiştirin
+  max_lines: 300000
+  test_size: 0.2
+  random_state: 42
+
+model:
+  base_model: "google/mt5-small"
+  max_length: 128
+
+training:
+  epochs: 5
+  batch_size: 32
+  learning_rate: 0.001
+
+artifacts:
+  processed_data_dir: "artifacts/processed_data"
+  model_output_dir: "models/mt5-small-translation-v2"
+  results_dir: "artifacts/training_results"

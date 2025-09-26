@@ -1,0 +1,10 @@
+tensorflow
+transformers
+scikit-learn
+evaluate
+pandas
+numpy
+pyyaml
+flet
+uvicorn[standard]
+python-multipart
