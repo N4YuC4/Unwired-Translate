@@ -42,3 +42,4 @@ logs/
 build/
 dist/
 *.egg-info/
+GEMINI.md

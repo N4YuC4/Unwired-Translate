@@ -1,20 +1,42 @@
-project_name: "Translation-HPLT-EN-TR-V2"
+
+# --- Proje ve Model Ayarları ---
+proje_adi: "Translation"
+veri_seti: "HPLT_EN-TR"
+model_mimarisi: "mt5-base"
+model_teknigi: "4bit-QLoRA"
+versiyon: "V2.1"
+model_adi: "google/mt5-base"
+
+# --- Veri Ayarları ---
 dataset:
-  path: "/kaggle/input/hplt-en-tr/" # Bu yolu kendi veri setinizin olduğu yer ile değiştirin
-  max_lines: 300000
+  path: "datasets/HPLT_en-tr_dataset/final_cleaned_dataset.parquet"
+  start_line: 0
+  max_lines: 1000000  # Tüm veri setini kullanmak için null
   test_size: 0.2
   random_state: 42
 
-model:
-  base_model: "google/mt5-small"
-  max_length: 128
-
+# --- Eğitim Hiperparametreleri ---
 training:
-  epochs: 5
-  batch_size: 32
-  learning_rate: 0.001
+  epochs: 7
+  train_batch_size: 12
+  lr: 0.001
+  gradient_accumulation_steps: 6
+  percentile: 95
+  max_len: 128
+
+# --- QLoRA Hiperparametreleri ---
+qlora:
+  lora_rank: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  target_modules: "all-linear"
+
+# --- Sistem Ayarları ---
+system:
+  gpu: True
+  output_dir: "{model_mimarisi}_{model_teknigi}_{proje_adi}_{veri_seti}_{versiyon}"
 
 artifacts:
   processed_data_dir: "artifacts/processed_data"
-  model_output_dir: "models/mt5-small-translation-v2"
+  model_output_dir: "models/{model_mimarisi}_{model_teknigi}_{proje_adi}_{veri_seti}_{versiyon}"
   results_dir: "artifacts/training_results"
