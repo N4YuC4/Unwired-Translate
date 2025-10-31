@@ -69,6 +69,79 @@ def main(page: ft.Page):
     page.window_height = 800
     page.theme_mode = ft.ThemeMode.LIGHT
 
+    history_list = ft.ListView(expand=True, spacing=10, padding=20, auto_scroll=False)
+
+    def update_history_display():
+        history_list.controls.clear()
+        history = load_history()
+        if not history:
+            history_list.controls.append(ft.Text("Henüz çeviri geçmişi yok.", italic=True))
+        else:
+            for entry in history:
+                history_list.controls.append(
+                    ft.Card(
+                        content=ft.Container(
+                            padding=10,
+                            content=ft.Column([
+                                ft.Text(f"İngilizce: {entry['english']}", weight=ft.FontWeight.BOLD),
+                                ft.Text(f"Türkçe: {entry['turkish']}"),
+                                ft.Text(f"Zaman: {entry['timestamp']}", size=10, color=ft.Colors.GREY_600),
+                            ])
+                        )
+                    )
+                )
+        page.update()
+
+    update_history_display()
+
+    bottom_sheet_container = ft.Container(padding=10)
+    bs = ft.BottomSheet(bottom_sheet_container)
+    page.overlay.append(bs)
+
+    def show_menu():
+        bottom_sheet_container.content = menu_view
+        page.update()
+
+    def show_history(e):
+        bottom_sheet_container.content = history_view
+        page.update()
+
+    menu_view = ft.Column(
+        [
+            ft.ListTile(title=ft.Text("Geçmiş"), on_click=show_history),
+            ft.ListTile(title=ft.Text("Ayarlar (Yakında)"), disabled=True),
+        ]
+    )
+
+    history_view = ft.Column(
+        [
+            ft.Row(
+                [
+                    ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=lambda e: show_menu()),
+                    ft.Text("Çeviri Geçmişi", style=ft.TextThemeStyle.HEADLINE_SMALL),
+                ]
+            ),
+            history_list,
+        ],
+        expand=True
+    )
+
+    def open_bottom_sheet(e):
+        show_menu()
+        bs.open = True
+        page.update()
+
+    page.appbar = ft.AppBar(
+        title=ft.Text("Unwired Translate", style=ft.TextThemeStyle.HEADLINE_MEDIUM),
+        center_title=True,
+        actions=[
+            ft.IconButton(
+                icon=ft.Icons.MENU,
+                on_click=open_bottom_sheet,
+            ),
+        ],
+    )
+
     # --- Arayüz Bileşenleri (Widget'lar) ---
     input_text = ft.TextField(
         label="Çevrilecek İngilizce Metin",
@@ -91,32 +164,6 @@ def main(page: ft.Page):
     )
     progress_ring = ft.ProgressRing(visible=False, width=20, height=20)
     status_text = ft.Text("Model yükleniyor, lütfen bekleyin...", color=ft.Colors.BLUE)
-
-    history_list = ft.ListView(expand=1, spacing=10, padding=20, auto_scroll=True)
-
-    def update_history_display():
-        history_list.controls.clear()
-        history = load_history()
-        if not history:
-            history_list.controls.append(ft.Text("Henüz çeviri geçmişi yok.", italic=True))
-        else:
-            for entry in history:
-                history_list.controls.append(
-                    ft.Card(
-                        content=ft.Container(
-                            padding=10,
-                            content=ft.Column([
-                                ft.Text(f"İngilizce: {entry['english']}", weight=ft.FontWeight.BOLD),
-                                ft.Text(f"Türkçe: {entry['turkish']}"),
-                                ft.Text(f"Zaman: {entry['timestamp']}", size=10, color=ft.Colors.GREY_600),
-                            ])
-                        )
-                    )
-                )
-        if page.client_storage:
-             page.update()
-
-    update_history_display()
 
     def model_loader_thread_target(st, it, tb):
         """
@@ -159,6 +206,8 @@ def main(page: ft.Page):
         output_text.value = translated
         add_to_history(input_text.value, translated)
         update_history_display()
+        bs.open = False
+        page.update()
 
         progress_ring.visible = False
         translate_button.disabled = False
@@ -177,17 +226,28 @@ def main(page: ft.Page):
     page.add(
         ft.Column(
             [
-                ft.Text("Unwired Translate", style=ft.TextThemeStyle.HEADLINE_MEDIUM),
                 status_text,
-                input_text,
-                ft.Row([translate_button, progress_ring], alignment=ft.MainAxisAlignment.START),
-                output_text,
-                ft.Divider(),
-                ft.Text("Çeviri Geçmişi", style=ft.TextThemeStyle.HEADLINE_SMALL),
-                history_list,
+                ft.ResponsiveRow(
+                    [
+                        ft.Column(
+                            col={"sm": 12, "md": 6},
+                            controls=[
+                                input_text,
+                                ft.Row([translate_button, progress_ring]),
+                            ],
+                        ),
+                        ft.Column(
+                            col={"sm": 12, "md": 6},
+                            controls=[
+                                output_text,
+                            ],
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.START,
+                ),
             ],
             spacing=20,
-            expand=True
+            expand=True,
         )
     )
 
