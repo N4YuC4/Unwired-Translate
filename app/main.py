@@ -7,7 +7,7 @@ import json
 # Proje kök dizinini sisteme ekle
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from scripts import predict
-from utils import history_manager
+from utils import history_manager, settings_manager
 
 # --- Global Değişkenler ---
 model = None
@@ -71,7 +71,10 @@ def main(page: ft.Page):
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.window_width = 1000
     page.window_height = 700
-    page.theme_mode = ft.ThemeMode.LIGHT
+
+    # Kalıcı ayarları yükle ve temayı ayarla
+    settings = settings_manager.load_settings()
+    page.theme_mode = ft.ThemeMode.DARK if settings.get("theme_mode") == "dark" else ft.ThemeMode.LIGHT
 
     load_available_languages()
 
@@ -107,7 +110,7 @@ def main(page: ft.Page):
         except Exception:
             pass
 
-    # --- Alt Menü (BottomSheet) ---
+    # --- Alt Menü (BottomSheet) ve Ayarlar ---
     bs = ft.BottomSheet(ft.Container(padding=10), open=False)
     page.overlay.append(bs)
 
@@ -121,10 +124,40 @@ def main(page: ft.Page):
         bs.content = history_view
         bs.open = True
         page.update()
+
+    def show_settings(e=None):
+        bs.content = settings_view
+        bs.open = True
+        page.update()
+
+    def toggle_theme(e):
+        page.theme_mode = ft.ThemeMode.DARK if e.control.value else ft.ThemeMode.LIGHT
+        theme_switch.label = "Aydınlık Mod" if e.control.value else "Karanlık Mod"
+        
+        # Ayarı kaydet
+        current_settings = settings_manager.load_settings()
+        current_settings['theme_mode'] = 'dark' if e.control.value else 'light'
+        settings_manager.save_settings(current_settings)
+        
+        page.update()
+
+    theme_switch = ft.Switch(
+        label="Aydınlık Mod" if page.theme_mode == ft.ThemeMode.DARK else "Karanlık Mod",
+        value=(page.theme_mode == ft.ThemeMode.DARK),
+        on_change=toggle_theme,
+    )
+
+    settings_view = ft.Column([
+        ft.Row([
+            ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=show_menu, tooltip="Geri dön"),
+            ft.Text("Ayarlar", style=ft.TextThemeStyle.HEADLINE_SMALL),
+        ]),
+        ft.Row([theme_switch]),
+    ])
     
     menu_view = ft.Column([
         ft.ListTile(title=ft.Text("Geçmiş"), leading=ft.Icon(ft.Icons.HISTORY), on_click=show_history),
-        ft.ListTile(title=ft.Text("Ayarlar (Yakında)"), leading=ft.Icon(ft.Icons.SETTINGS), disabled=True),
+        ft.ListTile(title=ft.Text("Ayarlar"), leading=ft.Icon(ft.Icons.SETTINGS), on_click=show_settings),
     ])
 
     history_view = ft.Column([
@@ -149,6 +182,7 @@ def main(page: ft.Page):
     
     def swap_languages(e):
         source_lang_dd.value, target_lang_dd.value = target_lang_dd.value, source_lang_dd.value
+        input_text.value, output_text.value = output_text.value, input_text.value
         page.update()
 
     swap_button = ft.IconButton(icon=ft.Icons.SWAP_HORIZ, on_click=swap_languages, tooltip="Dilleri Değiştir", disabled=True)
@@ -203,9 +237,9 @@ def main(page: ft.Page):
     # --- Sayfa Düzeni ---
     lang_selection_row = ft.ResponsiveRow(
         [
-            ft.Column(col={"sm": 1, "md": 5}, controls=[source_lang_dd], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Column(col={"sm": 5, "md": 5}, controls=[source_lang_dd], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             ft.Column(col={"sm": 2, "md": 2}, controls=[swap_button], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            ft.Column(col={"sm": 1, "md": 5}, controls=[target_lang_dd], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Column(col={"sm": 5, "md": 5}, controls=[target_lang_dd], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
         ],
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         alignment=ft.MainAxisAlignment.CENTER,
