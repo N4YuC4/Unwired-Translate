@@ -22,7 +22,7 @@ def load_history():
         with open(file_path, "r", encoding="utf-8") as f:
             history = json.load(f)
             # Ensure all entries have necessary keys, or filter them out
-            history = [entry for entry in history if all(k in entry for k in ["english", "turkish", "timestamp"])]
+            history = [entry for entry in history if all(k in entry for k in ["source_text", "target_text", "timestamp", "direction"])]
             return history
     except json.JSONDecodeError:
         print(f"Warning: History file '{file_path}' is corrupted. Starting with empty history.")
@@ -44,15 +44,16 @@ def save_history(history):
     except Exception as e:
         print(f"Error saving history to '{file_path}': {e}")
 
-def add_to_history(english_text, turkish_text):
+def add_to_history(source_text, target_text, source_lang, target_lang):
     """
     Adds a new translation entry to the history and saves it.
     """
     history = load_history()
     new_entry = {
-        "english": english_text,
-        "turkish": turkish_text,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "source_text": source_text,
+        "target_text": target_text,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "direction": f"{source_lang}->{target_lang}"
     }
     history.insert(0, new_entry) # Add to the beginning for easier display of latest translations
     # Keep only the last N entries to prevent the file from growing too large

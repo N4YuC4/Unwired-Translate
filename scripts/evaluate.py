@@ -1,23 +1,22 @@
 # Gerekli kütüphanelerin import edilmesi
-import os  # İşletim sistemiyle ilgili işlemler için
-import yaml  # YAML formatındaki yapılandırma dosyalarını okumak için
-import json  # JSON formatındaki verileri işlemek için (sonuçları kaydetmek vb.)
-import pandas as pd  # Veri işleme ve analizi için
-import torch  # Derin öğrenme ve tensör işlemleri için
-import evaluate  # Hugging Face'in model değerlendirme metriklerini yüklemek için (örn: METEOR)
-from tqdm import tqdm  # Döngülerde ilerleme çubuğu göstermek için
+import os
+import yaml
+import json
+import pandas as pd
+import torch
+import evaluate
+from tqdm import tqdm
 from transformers import (
-    MT5Tokenizer,  # MT5 modeli için tokenizer
-    T5ForConditionalGeneration,  # Koşullu metin üretimi için T5/MT5 modeli
-    BitsAndBytesConfig,  # 4-bit kuantizasyon ayarları için
+    MT5Tokenizer,
+    T5ForConditionalGeneration,
+    BitsAndBytesConfig,
 )
-from peft import PeftModel  # PEFT (LoRA) ile eğitilmiş adaptörleri yüklemek için
-from torch.utils.data import Dataset, DataLoader  # PyTorch'ta veri setleri ve yükleyicileri için
-import logging  # Olayları ve hataları kaydetmek için
-from datetime import datetime  # Tarih ve saat bilgileri için
+from peft import PeftModel
+from torch.utils.data import Dataset, DataLoader
+import logging
+from datetime import datetime
 
 # --- LOGLAMA AYARLARI ---
-# Değerlendirme süreci için loglama sistemi kurulumu
 log_dir = "logs/evaluate"
 os.makedirs(log_dir, exist_ok=True)
 log_filename = f"{log_dir}/evaluate_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
@@ -28,12 +27,8 @@ logging.basicConfig(level=logging.INFO,
                         logging.StreamHandler()
                     ])
 
-# --- PYTORCH VERİ SETİ SINIFI ---
-# Not: Bu sınıf, train.py'deki ile aynıdır. Kodu tekrar kullanmak yerine ortak bir modüle taşınabilir.
+# --- PYTORCH VERİ SETİ SINIFI (V1 UYUMLU) ---
 class TranslationDataset(Dataset):
-    """
-    Pandas DataFrame'ini, PyTorch DataLoader tarafından kullanılabilecek bir veri setine dönüştürür.
-    """
     def __init__(self, tokenizer, src_texts, tgt_texts, max_len=128):
         self.tokenizer = tokenizer
         self.src_texts = src_texts
@@ -44,27 +39,12 @@ class TranslationDataset(Dataset):
         return len(self.src_texts)
 
     def __getitem__(self, idx):
-        src_text = "translate English to Turkish: " + self.src_texts[idx]
+        src_text = self.src_texts[idx]
         tgt_text = self.tgt_texts[idx]
 
-        # Kaynak metni sayısallaştır
-        source = self.tokenizer(
-            src_text,
-            truncation=True,
-            padding="max_length",
-            max_length=self.max_len,
-            return_tensors="pt"
-        )
-        # Hedef metni sayısallaştır
-        target = self.tokenizer(
-            tgt_text,
-            truncation=True,
-            padding="max_length",
-            max_length=self.max_len,
-            return_tensors="pt"
-        )
+        source = self.tokenizer(src_text, truncation=True, padding="max_length", max_length=self.max_len, return_tensors="pt")
+        target = self.tokenizer(tgt_text, truncation=True, padding="max_length", max_length=self.max_len, return_tensors="pt")
 
-        # Kayıp hesaplaması dışında tutulacak padding token'larını -100 yap
         labels = target["input_ids"]
         labels[labels == self.tokenizer.pad_token_id] = -100
 
@@ -76,107 +56,95 @@ class TranslationDataset(Dataset):
 
 # --- ANA DEĞERLENDİRME FONKSİYONU ---
 def main():
-    """
-    Eğitilmiş modelin çeviri performansını test seti üzerinde METEOR metriği ile değerlendirir.
-    """
-    # Yapılandırma dosyasını (config.yaml) oku
     with open("config.yaml", "r") as f:
         config = yaml.safe_load(f)
 
-    # Cihazı belirle (GPU veya CPU)
     DEVICE = "cuda" if torch.cuda.is_available() and config['system']['gpu'] else "cpu"
 
     logging.info("Test verisi ve model yükleniyor...")
-    # İşlenmiş test verisini yükle
     processed_data_dir = config['artifacts']['processed_data_dir']
     test_df = pd.read_parquet(os.path.join(processed_data_dir, "test.parquet"))
 
-    # Değerlendirilecek modelin klasör yolunu config'den oluştur
-    output_dir = config['system']['output_dir'].format(
+    lora_config = config['system']['lora']
+    base_dir = lora_config['base_dir'].format(
         model_mimarisi=config['model_mimarisi'],
         model_teknigi=config['model_teknigi'],
         proje_adi=config['proje_adi'],
         veri_seti=config['veri_seti'],
         versiyon=config['versiyon']
     )
-    model_dir = os.path.join("models", output_dir)
+    lang_dir = lora_config['lang_dir'].format(
+        source_lang=config['language']['source'],
+        target_lang=config['language']['target']
+    )
+    model_dir = os.path.join(config['system']['output_dir'], base_dir, lang_dir)
 
     # --- MODEL YÜKLEME ---
-    # Temel modeli 4-bit olarak yüklemek için kuantizasyon yapılandırması
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
 
-    # Temel T5 modelini 4-bit kuantizasyon ile yükle
     model = T5ForConditionalGeneration.from_pretrained(
         config['model_adi'],
         quantization_config=bnb_config,
         device_map="auto"
     )
 
-    # Kaydedilmiş tokenizer'ı ve LoRA adaptörlerini yükle
     tokenizer = MT5Tokenizer.from_pretrained(model_dir)
     model = PeftModel.from_pretrained(model, model_dir)
 
-    # Test veri seti ve yükleyicisini oluştur
     MAX_LEN = config['training']['max_len']
-    test_dataset = TranslationDataset(tokenizer, test_df["en"].tolist(), test_df["tr"].tolist(), MAX_LEN)
+    
+    test_dataset = TranslationDataset(tokenizer, test_df["source"].tolist(), test_df["target"].tolist(), MAX_LEN)
     test_loader = DataLoader(test_dataset, batch_size=config['training']['train_batch_size']*2, shuffle=False)
 
     # --- METRİK HESAPLAMA ---
     logging.info("METEOR metriği yükleniyor...")
-    # Hugging Face `evaluate` kütüphanesinden METEOR metriğini yükle
     meteor = evaluate.load('meteor')
 
-    all_predictions = []  # Modelin ürettiği tüm çeviriler
-    all_references = []   # Gerçek (referans) çeviriler
+    all_predictions = []
+    all_references = []
 
     logging.info("Çeviriler oluşturuluyor...")
-    model.eval()  # Modeli değerlendirme moduna al
-    with torch.no_grad():  # Gradyan hesaplamasını kapat
-        # Test veri yükleyicisindeki her bir batch için
+    model.eval()
+    with torch.no_grad():
         for batch in tqdm(test_loader, desc="Çeviriler oluşturuluyor"):
-            # Veriyi ilgili cihaza gönder
-            batch = {k: v.to(DEVICE) for k, v in batch.items()}
+            # Orijinal script'teki batching mantığına geri dönülüyor
+            # Dikkat: Bu, 'evaluate' script'inin eski, daha az sağlam hali olabilir.
+            # Ancak V1 ile tutarlılık için geri alınıyor.
+            input_ids = batch["input_ids"].to(DEVICE)
+            attention_mask = batch["attention_mask"].to(DEVICE)
+            labels = batch["labels"].to(DEVICE)
             
-            # Model ile çeviri üret
-            # Not: `unsqueeze(0)` ile batch boyutu 1 olan bir tensör oluşturuluyor.
-            # Bu, DataLoader'dan gelen tekil örneklerin doğru işlenmesi için bir düzeltmedir.
-            # Daha verimli bir yaklaşım, DataLoader'dan gelen batch'leri doğrudan kullanmak olabilir.
             outputs = model.generate(
-                input_ids=batch["input_ids"].unsqueeze(0),
-                attention_mask=batch["attention_mask"].unsqueeze(0),
+                input_ids=input_ids,
+                attention_mask=attention_mask,
                 max_length=MAX_LEN,
                 num_beams=4,
                 early_stopping=True
             )
-            # Üretilen token'ları metne dönüştür
+            
             pred_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
-            # Referans metinleri (etiketleri) de metne dönüştür
-            labels = batch["labels"].unsqueeze(0)
-            labels[labels == -100] = tokenizer.pad_token_id # -100'leri tekrar pad token ID'sine çevir
+            labels[labels == -100] = tokenizer.pad_token_id
             ref_texts = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
-            # Üretilen ve referans metinleri listelere ekle
             all_predictions.extend(pred_texts)
             all_references.extend(ref_texts)
 
     # --- SONUÇLARI HESAPLAMA VE KAYDETME ---
     logging.info("METEOR skoru hesaplanıyor...")
-    # Toplanan tüm tahminler ve referanslar üzerinden METEOR skorunu hesapla
     results = meteor.compute(predictions=all_predictions, references=all_references)
 
     logging.info(f"Modelin Ortalama METEOR Skoru: {results['meteor']:.4f}")
 
-    # Hesaplanan metrikleri bir JSON dosyasına kaydet
     results_dir = config['artifacts']['results_dir']
+    os.makedirs(results_dir, exist_ok=True)
     with open(os.path.join(results_dir, "metrics.json"), "w") as f:
         json.dump(results, f, indent=4)
     logging.info(f"Metrikler '{results_dir}/metrics.json' dosyasına kaydedildi.")
 
-# --- SCRIPT'İN BAŞLANGIÇ NOKTASI ---
 if __name__ == "__main__":
     main()

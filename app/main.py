@@ -1,256 +1,179 @@
-# Gerekli kütüphanelerin import edilmesi
 import flet as ft
 import os
 import sys
 import threading
-import yaml
+import json
 
-# `scripts` klasörünü Python yoluna ekleyerek oradaki modüllerin import edilmesini sağla
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scripts')))
-from predict import load_model, translate_sentence
+# Proje kök dizinini sisteme ekle
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from scripts import predict
+from utils import history_manager
 
-# `utils` klasörünü Python yoluna ekleyerek oradaki modüllerin import edilmesini sağla
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'utils')))
-from history_manager import load_history, add_to_history
-
-# --- 1. Global Değişkenler ---
-model_loaded = False
+# --- Global Değişkenler ---
 model = None
 tokenizer = None
 config = None
-MODEL_DIR = ""
-DEVICE = "cpu"  # Masaüstü uygulaması için CPU kullanımı
+model_loaded = False
+available_languages = []
+lang_options = []
+supported_source_lang = ""
+supported_target_lang = ""
+source_lang_dd = None
+target_lang_dd = None
 
-# --- 2. Asenkron Model Yükleme ---
-def initialize_model():
-    """
-    Modeli ve tokenizer'ı arka planda yükler.
-    """
-    global model, tokenizer, model_loaded, config, MODEL_DIR
+# --- Yardımcı Fonksiyonlar ---
+def load_available_languages():
+    """`app/languages.json` dosyasından dil listesini yükler."""
+    global available_languages
+    try:
+        lang_file_path = os.path.join(os.path.dirname(__file__), 'languages.json')
+        with open(lang_file_path, 'r', encoding='utf-8') as f:
+            available_languages = json.load(f)
+    except Exception as e:
+        print(f"Hata: 'languages.json' dosyası okunamadı: {e}")
+        available_languages = [{"name": "English", "code": "English"}, {"name": "Turkish", "code": "Turkish"}]
 
-    print("Konfigürasyon ve model yükleniyor... Lütfen bekleyin.")
+# --- Arka Plan Görevleri ---
+def initialize_app(page: ft.Page, status_text: ft.Text, controls_to_enable: list):
+    """Modeli ve tokenizer'ı arka planda yükler ve UI'ı günceller."""
+    global model, tokenizer, config, model_loaded, supported_source_lang, supported_target_lang
+
+    def update_ui(message, color, is_loaded):
+        status_text.value = message
+        status_text.color = color
+        for control in controls_to_enable:
+            control.disabled = not is_loaded
+        # Filtreleme mantığı kaldırıldı
+        page.update()
+
+    page.run_thread(lambda: update_ui("Konfigürasyon ve model yükleniyor...", ft.Colors.BLUE_GREY, False))
     
     try:
-        with open("config.yaml", "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-
-        output_dir_format = config['system']['output_dir'].format(
-            model_mimarisi=config['model_mimarisi'],
-            model_teknigi=config['model_teknigi'],
-            proje_adi=config['proje_adi'],
-            veri_seti=config['veri_seti'],
-            versiyon=config['versiyon']
-        )
-        MODEL_DIR = os.path.join("models", output_dir_format)
-
-        temp_model, temp_tokenizer = load_model(config, device=DEVICE)
-
-        if temp_model and temp_tokenizer:
-            model = temp_model
-            tokenizer = temp_tokenizer
+        model, tokenizer, config = predict.load_model()
+        if model and tokenizer:
             model_loaded = True
-            print("Model başarıyla yüklendi.")
-        else:
-            print(f"HATA: Model '{MODEL_DIR}' dizininden yüklenemedi.")
-            model_loaded = False
-
+            supported_source_lang = config.get('language', {}).get('source', 'English')
+            supported_target_lang = config.get('language', {}).get('target', 'Turkish')
+            page.run_thread(lambda: update_ui("Model (V1) başarıyla yüklendi. Çeviriye hazır.", ft.Colors.GREEN, True))
     except Exception as e:
-        print(f"Model yüklenirken bir hata oluştu: {e}")
         model_loaded = False
+        page.run_thread(lambda: update_ui(f"Model yüklenirken bir hata oluştu: {e}", ft.Colors.RED, False))
 
-# --- 3. Flet Uygulamasının Ana Arayüz Fonksiyonu ---
+# --- Flet Ana Fonksiyonu ---
 def main(page: ft.Page):
-    """
-    Flet uygulamasının ana arayüzünü (UI) oluşturur ve olayları yönetir.
-    """
-    page.title = "İngilizce - Türkçe Çeviri Uygulaması"
+    global lang_options, source_lang_dd, target_lang_dd
+    page.title = "Unwired Translate"
     page.vertical_alignment = ft.MainAxisAlignment.START
-    page.window_width = 700
-    page.window_height = 800
+    page.window_width = 800
+    page.window_height = 700
     page.theme_mode = ft.ThemeMode.LIGHT
 
-    history_list = ft.ListView(expand=True, spacing=10, padding=20, auto_scroll=False)
+    load_available_languages()
+    lang_options = [ft.dropdown.Option(lang['code'], lang['name']) for lang in available_languages]
 
+    # --- Arayüz Olay Yöneticileri ---
+    def swap_languages(e):
+        """Dilleri takas eder (basit versiyon)."""
+        source_lang_dd.value, target_lang_dd.value = target_lang_dd.value, source_lang_dd.value
+        page.update()
+
+    # --- Arayüz Bileşenleri ---
+    status_text = ft.Text("Uygulama başlatılıyor...", color=ft.Colors.BLUE_GREY, size=12)
+    source_lang_dd = ft.Dropdown(
+        options=lang_options, 
+        value="English", 
+        label="Kaynak Dil", 
+        disabled=True,
+    )
+    target_lang_dd = ft.Dropdown(
+        options=lang_options, 
+        value="Turkish", 
+        label="Hedef Dil", 
+        disabled=True,
+    )
+    input_text = ft.TextField(label="Çevrilecek Metin", multiline=True, min_lines=5, max_lines=5, disabled=True)
+    output_text = ft.TextField(label="Çeviri Sonucu", multiline=True, min_lines=5, max_lines=5, read_only=True)
+    translate_button = ft.ElevatedButton(text="Çevir", icon=ft.Icons.TRANSLATE, disabled=True, height=50)
+    progress_ring = ft.ProgressRing(visible=False, width=20, height=20)
+    swap_button = ft.IconButton(icon=ft.Icons.SWAP_HORIZ, on_click=swap_languages, tooltip="Dilleri Değiştir", disabled=True)
+    history_list = ft.ListView(expand=True, spacing=10, auto_scroll=True)
+
+    # --- Diğer Olay Fonksiyonları ---
     def update_history_display():
         history_list.controls.clear()
-        history = load_history()
-        if not history:
-            history_list.controls.append(ft.Text("Henüz çeviri geçmişi yok.", italic=True))
-        else:
-            for entry in history:
-                history_list.controls.append(
-                    ft.Card(
-                        content=ft.Container(
-                            padding=10,
-                            content=ft.Column([
-                                ft.Text(f"İngilizce: {entry['english']}", weight=ft.FontWeight.BOLD),
-                                ft.Text(f"Türkçe: {entry['turkish']}"),
-                                ft.Text(f"Zaman: {entry['timestamp']}", size=10, color=ft.Colors.GREY_600),
-                            ])
-                        )
+        history = history_manager.load_history()
+        for entry in reversed(history):
+            if 'direction' in entry:
+                source_lang_code, target_lang_code = entry['direction'].split('->')
+            else:
+                source_lang_code = supported_source_lang[:2].lower() if supported_source_lang else "en"
+                target_lang_code = supported_target_lang[:2].lower() if supported_target_lang else "tr"
+            history_list.controls.append(
+                ft.Card(
+                    content=ft.Container(
+                        padding=15,
+                        content=ft.Column([
+                            ft.Text(f"{source_lang_code.upper()}: {entry['source_text']}", weight=ft.FontWeight.BOLD),
+                            ft.Text(f"{target_lang_code.upper()}: {entry['target_text']}"),
+                            ft.Text(f"Zaman: {entry['timestamp']}", size=10, color=ft.Colors.GREY),
+                        ])
                     )
                 )
+            )
         page.update()
 
+    def do_translation():
+        source_lang = source_lang_dd.value
+        target_lang = target_lang_dd.value
+        controls_to_manage = [translate_button, swap_button, source_lang_dd, target_lang_dd, input_text]
+        page.run_thread(lambda: [setattr(c, 'disabled', True) for c in controls_to_manage])
+        page.run_thread(lambda: setattr(progress_ring, 'visible', True))
+        page.run_thread(page.update)
+        try:
+            if not input_text.value.strip():
+                output_text.value = "Lütfen çevirmek için bir metin girin."
+            else:
+                translated = predict.translate(model, tokenizer, input_text.value, source_lang, target_lang, max_len=config.get('training', {}).get('max_len', 128))
+                output_text.value = translated
+                history_manager.add_to_history(input_text.value, translated, source_lang, target_lang)
+                update_history_display()
+        except Exception as e:
+            output_text.value = f"Çeviri sırasında bir hata oluştu: {e}"
+        page.run_thread(lambda: [setattr(c, 'disabled', False) for c in controls_to_manage])
+        page.run_thread(lambda: setattr(progress_ring, 'visible', False))
+        page.run_thread(page.update)
+
+    translate_button.on_click = lambda _: threading.Thread(target=do_translation, daemon=True).start()
+    
+    # --- Sayfa Düzeni ---
+    lang_selection_row = ft.Row(
+        [
+            ft.Column([source_lang_dd], expand=True),
+            ft.Column([swap_button], alignment=ft.MainAxisAlignment.CENTER),
+            ft.Column([target_lang_dd], expand=True),
+        ],
+        alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.CENTER
+    )
+    page.add(
+        ft.Container(
+            padding=20,
+            content=ft.Column(
+                controls=[
+                    status_text,
+                    ft.Column([lang_selection_row, input_text, ft.Row([translate_button, progress_ring], alignment=ft.MainAxisAlignment.CENTER), output_text], spacing=15),
+                    ft.Divider(height=30),
+                    ft.Text("Çeviri Geçmişi", style=ft.TextThemeStyle.HEADLINE_SMALL),
+                    ft.Container(content=history_list, border=ft.border.all(1, ft.Colors.BLACK26), border_radius=ft.border_radius.all(5), expand=True)
+                ], expand=True
+            )
+        )
+    )
+    
     update_history_display()
 
-    bottom_sheet_container = ft.Container(padding=10)
-    bs = ft.BottomSheet(bottom_sheet_container)
-    page.overlay.append(bs)
+    # --- Başlangıç ---
+    controls_to_enable = [translate_button, swap_button, source_lang_dd, target_lang_dd, input_text]
+    threading.Thread(target=initialize_app, args=(page, status_text, controls_to_enable), daemon=True).start()
 
-    def show_menu():
-        bottom_sheet_container.content = menu_view
-        page.update()
-
-    def show_history(e):
-        bottom_sheet_container.content = history_view
-        page.update()
-
-    menu_view = ft.Column(
-        [
-            ft.ListTile(title=ft.Text("Geçmiş"), on_click=show_history),
-            ft.ListTile(title=ft.Text("Ayarlar (Yakında)"), disabled=True),
-        ]
-    )
-
-    history_view = ft.Column(
-        [
-            ft.Row(
-                [
-                    ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=lambda e: show_menu()),
-                    ft.Text("Çeviri Geçmişi", style=ft.TextThemeStyle.HEADLINE_SMALL),
-                ]
-            ),
-            history_list,
-        ],
-        expand=True
-    )
-
-    def open_bottom_sheet(e):
-        show_menu()
-        bs.open = True
-        page.update()
-
-    page.appbar = ft.AppBar(
-        title=ft.Text("Unwired Translate", style=ft.TextThemeStyle.HEADLINE_MEDIUM),
-        center_title=True,
-        actions=[
-            ft.IconButton(
-                icon=ft.Icons.MENU,
-                on_click=open_bottom_sheet,
-            ),
-        ],
-    )
-
-    # --- Arayüz Bileşenleri (Widget'lar) ---
-    input_text = ft.TextField(
-        label="Çevrilecek İngilizce Metin",
-        multiline=True,
-        min_lines=5,
-        max_lines=5,
-        disabled=True # Başlangıçta devre dışı
-    )
-    translate_button = ft.ElevatedButton(
-        text="Çevir", 
-        icon=ft.Icons.TRANSLATE, 
-        disabled=True # Başlangıçta devre dışı
-    )
-    output_text = ft.TextField(
-        label="Türkçe Çeviri",
-        multiline=True,
-        min_lines=5,
-        max_lines=5,
-        read_only=True,
-    )
-    progress_ring = ft.ProgressRing(visible=False, width=20, height=20)
-    status_text = ft.Text("Model yükleniyor, lütfen bekleyin...", color=ft.Colors.BLUE)
-
-    def model_loader_thread_target(st, it, tb):
-        """
-        Arka plan thread'inin hedef fonksiyonu. Modeli yükler ve UI'ı günceller.
-        """
-        initialize_model()
-        
-        # UI güncellemelerini doğrudan yap
-        if model_loaded:
-            st.value = "Model başarıyla yüklendi. Çeviri yapmaya hazır."
-            st.color = ft.Colors.GREEN
-            it.disabled = False
-            tb.disabled = False
-        else:
-            st.value = f"Model '{MODEL_DIR}' yüklenemedi. Lütfen modeli eğitin."
-            st.color = ft.Colors.RED
-            it.disabled = True
-            tb.disabled = True
-        
-        page.update() # Değişiklikleri arayüze yansıt
-
-    # Modeli arka planda yüklemeye başla
-    threading.Thread(target=model_loader_thread_target, args=(status_text, input_text, translate_button), daemon=True).start()
-
-    # --- Olay Fonksiyonları ---
-    def run_translation_in_thread(e):
-        progress_ring.visible = True
-        translate_button.disabled = True
-        output_text.value = "Çeviri yapılıyor, lütfen bekleyin..."
-        page.update()
-
-        translated = translate_sentence(
-            input_text.value,
-            model,
-            tokenizer,
-            max_length=config['training']['max_len'],
-            device=DEVICE
-        )
-
-        output_text.value = translated
-        add_to_history(input_text.value, translated)
-        update_history_display()
-        bs.open = False
-        page.update()
-
-        progress_ring.visible = False
-        translate_button.disabled = False
-        page.update()
-
-    def translate_click(e):
-        if not input_text.value:
-            output_text.value = "Lütfen çevirmek için bir metin girin."
-            page.update()
-            return
-        
-        threading.Thread(target=run_translation_in_thread, args=(e,), daemon=True).start()
-
-    translate_button.on_click = translate_click
-
-    page.add(
-        ft.Column(
-            [
-                status_text,
-                ft.ResponsiveRow(
-                    [
-                        ft.Column(
-                            col={"sm": 12, "md": 6},
-                            controls=[
-                                input_text,
-                                ft.Row([translate_button, progress_ring]),
-                            ],
-                        ),
-                        ft.Column(
-                            col={"sm": 12, "md": 6},
-                            controls=[
-                                output_text,
-                            ],
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.START,
-                ),
-            ],
-            spacing=20,
-            expand=True,
-        )
-    )
-
-# --- 4. Uygulamayı Başlatma ---
 if __name__ == "__main__":
     ft.app(target=main)

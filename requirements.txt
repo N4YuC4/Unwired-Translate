@@ -15,3 +15,5 @@ flet
 uvicorn[standard]
 python-multipart
 beautifulsoup4
+deepl
+deep_translator

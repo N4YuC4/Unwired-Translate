@@ -38,6 +38,9 @@ notebooks
 *.log
 logs/
 
+# Eklenenler
+
+
 # 7. Diğer Kurulum ve Paketleme Dosyaları
 build/
 dist/
