@@ -48,6 +48,10 @@ def parcayi_isle(df, model, kaynak_dil, hedef_dil, benzerlik_esigi, cihaz):
     Veri çerçevesinin (DataFrame) bir parçasını (chunk) işler ve temizler.
     Kaynak ve hedef cümleler arasındaki anlamsal benzerliği hesaplar ve düşük skorlu olanları eler.
     """
+
+    # 'Kaynak' sütunu 'Hedef' sütununa eşit olmayanları getir
+    df = df.query(f'{kaynak_dil} != {hedef_dil}')
+
     # Cümleleri gömme (embedding) vektörlerine dönüştür. Bu, cümlelerin anlamsal içeriğini temsil eden sayısal vektörlerdir.
     kaynak_gommeleri = model.encode(df[kaynak_dil].tolist(), convert_to_tensor=True, show_progress_bar=True, device=cihaz)
     hedef_gommeleri = model.encode(df[hedef_dil].tolist(), convert_to_tensor=True, show_progress_bar=True, device=cihaz)

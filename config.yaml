@@ -1,36 +1,39 @@
-
 # --- Proje ve Model Ayarları ---
 proje_adi: "Translation"
-veri_seti: "HPLT"
 model_mimarisi: "mt5-small"
 model_teknigi: "4bit-QLoRA"
-versiyon: "V1"
+versiyon: "V1.1"
 model_adi: "google/mt5-small"
 
 # --- Dil Ayarları ---
-# Not: Bu ayarlar V1 modeli için geçerlidir.
 language:
   source: "English"
   target: "Turkish"
 
 # --- Veri Ayarları ---
 dataset:
-  path: "datasets/HPLT_dataset/English-Turkish/"
-  source_lang_file: "{source_lang}.parquet"
-  target_lang_file: "{target_lang}.parquet"
+  names: ["HPLT"]
+  base_path: "datasets"
   start_line: 0
-  max_lines: 100000
+  max_lines: 230000
+  read_first_set_completely: False
   test_size: 0.2
   random_state: 42
+  cleaning:
+    enabled: True
+    similarity_threshold: 0.7
+    gpu: True
+    chunk_size: 10000
 
 # --- Eğitim Hiperparametreleri ---
 training:
-  epochs: 9
-  train_batch_size: 10
+  epochs: 4
+  train_batch_size: 15
   lr: 0.002
   gradient_accumulation_steps: 4
-  percentile: 95
+  percentile: 96
   max_len: 128
+  use_dynamic_max_len: True
 
 # --- QLoRA Hiperparametreleri ---
 qlora:
@@ -43,7 +46,6 @@ qlora:
 system:
   gpu: True
   output_dir: "models"
-  # V1 modeli için eski yol yapısı
   lora:
     base_dir: "{model_mimarisi}_{model_teknigi}_{proje_adi}_{veri_seti}_{versiyon}"
     lang_dir: "{source_lang}-{target_lang}"

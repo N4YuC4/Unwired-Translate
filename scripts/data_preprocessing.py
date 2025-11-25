@@ -3,10 +3,12 @@ import yaml
 import pandas as pd
 import re
 import ftfy
+import pyarrow.parquet as pq
 from sklearn.model_selection import train_test_split
 import logging
 from datetime import datetime
 from bs4 import BeautifulSoup
+import gc
 
 # --- LOGLAMA AYARLARI ---
 log_dir = "logs/data_preprocessing"
@@ -19,99 +21,183 @@ logging.basicConfig(level=logging.INFO,
                         logging.StreamHandler()
                     ])
 
-# --- VERİ YÜKLEME FONKSİYONU ---
-def load_parquet_dataset(source_path, target_path, source_lang, target_lang, start_line=0, num_lines=None):
-    """
-    Parquet formatındaki kaynak ve hedef veri setlerini okur ve birleştirir.
-    """
-    if not os.path.exists(source_path):
-        raise FileNotFoundError(f"Kaynak dosya bulunamadı: {source_path}")
-    if not os.path.exists(target_path):
-        raise FileNotFoundError(f"Hedef dosya bulunamadı: {target_path}")
-
-    source_df = pd.read_parquet(source_path)
-    target_df = pd.read_parquet(target_path)
-
-    df = pd.DataFrame({
-        source_lang: source_df.iloc[:, 0],
-        target_lang: target_df.iloc[:, 0]
-    })
-
-    if num_lines is not None:
-        df = df.iloc[start_line:start_line + num_lines]
-
-    return df
-
+# --- VERİ YÜKLEME FONKSİYONU (NOTEBOOK'TAN) ---
+def load_parquet(source_path, target_path, start=0, num=None):
+    if not os.path.exists(source_path) or not os.path.exists(target_path):
+        logging.warning(f"Dosya bulunamadı: {source_path} veya {target_path}")
+        return pd.DataFrame(columns=["source", "target"])
+    
+    pf_src = pq.ParquetFile(source_path)
+    pf_tgt = pq.ParquetFile(target_path)
+    
+    # Satır sayılarını kontrol et
+    if pf_src.metadata.num_rows != pf_tgt.metadata.num_rows:
+        logging.warning(f"Satır sayıları eşleşmiyor: {source_path} ({pf_src.metadata.num_rows}) vs {target_path} ({pf_tgt.metadata.num_rows})")
+        # Güvenlik için minimum olanı alabiliriz veya hata verebiliriz. 
+        # Notebook mantığı iter_batches ile eşleştiriyor.
+        
+    iter_src = pf_src.iter_batches()
+    iter_tgt = pf_tgt.iter_batches()
+    dfs = []
+    collected = 0
+    scanned = 0
+    
+    for b_src, b_tgt in zip(iter_src, iter_tgt):
+        if num is not None and collected >= num: break
+        b_rows = b_src.num_rows
+        
+        # Başlangıç satırına gelene kadar atla
+        if scanned + b_rows < start:
+            scanned += b_rows
+            continue
+            
+        offset = max(0, start - scanned)
+        
+        # Batch'leri pandas'a çevir
+        p_src = b_src.to_pandas()
+        p_tgt = b_tgt.to_pandas()
+        
+        sl_src = p_src.iloc[offset:]
+        sl_tgt = p_tgt.iloc[offset:]
+        
+        if num is not None:
+            needed = num - collected
+            if len(sl_src) > needed:
+                sl_src = sl_src.iloc[:needed]
+                sl_tgt = sl_tgt.iloc[:needed]
+                
+        df_b = pd.DataFrame({"source": sl_src.iloc[:, 0], "target": sl_tgt.iloc[:, 0]})
+        dfs.append(df_b)
+        collected += len(df_b)
+        scanned += b_rows
+        
+    if not dfs: return pd.DataFrame(columns=["source", "target"])
+    return pd.concat(dfs, ignore_index=True)
 
 # --- METİN NORMALLEŞTİRME FONKSİYONU ---
 def normalize_text(text):
+    if text is None: return ""
+    text = str(text)
     text = ftfy.fix_text(text)
-    text = BeautifulSoup(text, "html.parser").get_text()
+    # HTML taglerini temizle (BeautifulSoup yavaş olabilir, regex daha hızlıdır büyük veri için)
+    text = re.sub(r'<[^>]+>', '', text) 
     text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'([!?.])\1+', r'\1', text) # Tekrarlayan noktalama işaretlerini tekile indir
     text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', text)
-    text = text.strip()
-    return text
+    return text.strip()
 
 # --- ANA İŞLEM FONKSİYONU ---
 def main():
     with open("config.yaml", "r") as f:
         config = yaml.safe_load(f)
 
-    logging.info("Veri seti yükleniyor...")
+    logging.info("Veri ön işleme başlatılıyor...")
     
-    veri_seti_config = config['dataset']
-    lang_config = config['language']
+    dataset_config = config['dataset']
+    source_lang = config['language']['source']
+    target_lang = config['language']['target']
     
-    source_lang = lang_config['source']
-    target_lang = lang_config['target']
-
-    source_path = os.path.join(veri_seti_config['path'], veri_seti_config['source_lang_file'].format(source_lang=source_lang))
-    target_path = os.path.join(veri_seti_config['path'], veri_seti_config['target_lang_file'].format(target_lang=target_lang))
-
-    df = load_parquet_dataset(
-        source_path,
-        target_path,
-        source_lang,
-        target_lang,
-        start_line=veri_seti_config['start_line'],
-        num_lines=veri_seti_config['max_lines']
-    )
-    logging.info(f"Toplam {len(df)} satır veri yüklendi.")
+    base_path = dataset_config.get('base_path', 'datasets')
+    dataset_names = dataset_config.get('names', [])
+    max_lines = dataset_config.get('max_lines', 100000)
+    start_line = dataset_config.get('start_line', 0)
+    read_first_completely = dataset_config.get('read_first_set_completely', False)
     
-    df.dropna(subset=[source_lang, target_lang], inplace=True)
-    df = df[(df[source_lang].str.len() > 0) & (df[target_lang].str.len() > 0)]
-    logging.info(f"Eksik veriler temizlendikten sonra {len(df)} satır kaldı.")
+    dfs = []
+    total_rows = 0
+    
+    for i, dset_name in enumerate(dataset_names):
+        remaining = max_lines - total_rows
+        
+        if not read_first_completely and remaining <= 0:
+            logging.info(f"Maksimum satır sayısına ({max_lines}) ulaşıldı. {dset_name} atlanıyor.")
+            continue
+            
+        if read_first_completely and i > 0 and remaining <= 0:
+            continue
+            
+        # Yol oluşturma: datasets/NAME/NAME-Lang.parquet varsayımı
+        ds_path = os.path.join(base_path, dset_name)
+        src_filename = f"{dset_name}-{source_lang}.parquet"
+        tgt_filename = f"{dset_name}-{target_lang}.parquet"
+        
+        src_p = os.path.join(ds_path, src_filename)
+        tgt_p = os.path.join(ds_path, tgt_filename)
+        
+        num_to_read = None if (read_first_completely and i == 0) else remaining
+        
+        logging.info(f"Yükleniyor: {dset_name} | Hedeflenen: {num_to_read if num_to_read else 'Tümü'}")
+        
+        df_temp = load_parquet(src_p, tgt_p, start=start_line, num=num_to_read)
+        
+        if df_temp.empty:
+            logging.warning(f"{dset_name} boş veya yüklenemedi.")
+            continue
 
+        df_temp['source_lang'] = source_lang
+        df_temp['target_lang'] = target_lang
+        dfs.append(df_temp)
+        total_rows += len(df_temp)
+        logging.info(f"{dset_name} setinden {len(df_temp)} satır yüklendi.")
+
+    if not dfs:
+        logging.error("Hiçbir veri yüklenemedi!")
+        return
+
+    df = pd.concat(dfs, ignore_index=True)
+    del dfs
+    gc.collect()
+    
+    logging.info(f"Toplam Ham Veri: {len(df)}")
+
+    # --- MIRRORING (ÇİFT YÖNLÜ VERİ ÇOĞALTMA) ---
+    # Notebook'taki mantık: Her zaman çift yönlü yapılıyor.
+    logging.info("Veri seti çift yönlü (bidirectional) hale getiriliyor...")
+    
+    df_reverse = df.copy()
+    # Sütunları değiştir
+    df_reverse = df_reverse.rename(columns={'source': 'target', 'target': 'source'})
+    # Dilleri değiştir
+    df_reverse['source_lang'] = target_lang
+    df_reverse['target_lang'] = source_lang
+    
+    df = pd.concat([df, df_reverse], ignore_index=True)
+    
+    # Karıştır
+    df = df.sample(frac=1, random_state=dataset_config['random_state']).reset_index(drop=True)
+    
+    logging.info(f"Mirroring sonrası toplam veri: {len(df)}")
+    
+    # --- NORMALİZASYON ---
     logging.info("Metin normalizasyonu uygulanıyor...")
-    df[source_lang] = df[source_lang].apply(normalize_text)
-    df[target_lang] = df[target_lang].apply(normalize_text)
-
-    logging.info("Yinelenen veriler kaldırılıyor...")
-    df.drop_duplicates(subset=[source_lang, target_lang], keep='first', inplace=True)
-    logging.info(f"Yinelenenler kaldırıldıktan sonra {len(df)} satır kaldı.")
-    logging.info("-" * 40)
-
-    logging.info("Eğitim ve test verileri ayrılıyor...")
+    df['source'] = df['source'].apply(normalize_text)
+    df['target'] = df['target'].apply(normalize_text)
+    
+    # Boş satırları temizle
+    df.dropna(subset=['source', 'target'], inplace=True)
+    df = df[(df['source'].str.len() > 0) & (df['target'].str.len() > 0)]
+    
+    # --- SPLIT VE KAYDETME ---
+    logging.info("Eğitim ve test olarak ayrılıyor...")
     train_df, test_df = train_test_split(
         df,
-        test_size=veri_seti_config['test_size'],
-        random_state=veri_seti_config['random_state']
+        test_size=dataset_config['test_size'],
+        random_state=dataset_config['random_state'],
+        stratify=df["source_lang"] # Dil dengesini korumak için stratify önemli
     )
-
-    logging.info("İşlenmiş veriler kaydediliyor...")
+    
     output_dir = config['artifacts']['processed_data_dir']
     os.makedirs(output_dir, exist_ok=True)
     
-    # Sütun isimlerini config'e göre değil, sabit olarak kaydediyoruz.
-    # Bu, train script'inin belediği formatla tutarlılık sağlar.
-    train_df.columns = ['source', 'target']
-    test_df.columns = ['source', 'target']
-
-    train_df.to_parquet(os.path.join(output_dir, "train.parquet"))
-    test_df.to_parquet(os.path.join(output_dir, "test.parquet"))
+    train_path = os.path.join(output_dir, "train.parquet")
+    test_path = os.path.join(output_dir, "test.parquet")
     
-    logging.info(f"Veriler başarıyla '{output_dir}' dizinine kaydedildi.")
+    train_df.to_parquet(train_path)
+    test_df.to_parquet(test_path)
+    
+    logging.info(f"Train Seti: {len(train_df)} satır -> {train_path}")
+    logging.info(f"Test Seti: {len(test_df)} satır -> {test_path}")
+    logging.info("Veri ön işleme tamamlandı.")
 
 if __name__ == "__main__":
     main()
