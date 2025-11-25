@@ -17,3 +17,8 @@ python-multipart
 beautifulsoup4
 deepl
 deep_translator
+tqdm
+matplotlib
+pytorch_lightning
+sentence-transformers
+requests
