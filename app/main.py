@@ -9,7 +9,7 @@ from datetime import datetime
 # Proje kök dizinini sisteme ekle
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from scripts import predict
-from utils import history_manager, settings_manager
+from utils import history_manager, settings_manager, localization_manager
 
 # --- LOGLAMA AYARLARI ---
 log_dir = "logs/app"
@@ -50,11 +50,12 @@ def load_available_languages():
     finally:
         lang_options = [ft.dropdown.Option(lang['code'], lang['name']) for lang in available_languages]
 
-def initialize_app(page: ft.Page, status_indicator: ft.Container, controls_to_enable: list):
+def initialize_app(page: ft.Page, status_indicator: ft.Container, controls_to_enable: list, loc_manager):
     global model, tokenizer, config, model_loaded, supported_source_lang, supported_target_lang
 
-    def update_status(message, color, is_loaded):
-        status_indicator.content.value = message
+    def update_status(message_key, color, is_loaded, raw_message=None):
+        msg = raw_message if raw_message else loc_manager.get(message_key)
+        status_indicator.content.value = msg
         status_indicator.bgcolor = color
         status_indicator.visible = True
         if is_loaded:
@@ -64,7 +65,7 @@ def initialize_app(page: ft.Page, status_indicator: ft.Container, controls_to_en
             control.disabled = not is_loaded
         page.update()
 
-    page.run_thread(lambda: update_status("Model yükleniyor, lütfen bekleyin...", ft.Colors.AMBER_800, False))
+    page.run_thread(lambda: update_status("model_loading", ft.Colors.AMBER_800, False))
     
     try:
         logger.info("Model yükleme işlemi başlatıldı.")
@@ -74,21 +75,30 @@ def initialize_app(page: ft.Page, status_indicator: ft.Container, controls_to_en
             supported_source_lang = config.get('language', {}).get('source', 'English')
             supported_target_lang = config.get('language', {}).get('target', 'Turkish')
             logger.info("Model başarıyla yüklendi.")
-            page.run_thread(lambda: update_status("Sistem hazır.", ft.Colors.GREEN, True))
+            page.run_thread(lambda: update_status("system_ready", ft.Colors.GREEN, True))
         else:
              model_loaded = False
              logger.error("Model nesnesi boş döndü.")
-             page.run_thread(lambda: update_status("Model yüklenemedi.", ft.Colors.RED_700, False))
+             page.run_thread(lambda: update_status("model_load_failed", ft.Colors.RED_700, False))
 
     except Exception as e:
         model_loaded = False
         logger.critical(f"Model yüklenirken kritik hata: {e}")
-        page.run_thread(lambda: update_status(f"Hata: {e}", ft.Colors.RED_700, False))
+        page.run_thread(lambda: update_status(None, ft.Colors.RED_700, False, raw_message=f"{loc_manager.get('error_prefix')}{e}"))
 
 # --- Flet Ana Fonksiyonu ---
 def main(page: ft.Page):
     logger.info("Uygulama başlatıldı.")
-    page.title = "Unwired Translate"
+    
+    # Ayarları yükle
+    settings = settings_manager.load_settings()
+    ui_lang = settings.get("ui_language", "en")
+    
+    # Localization Manager Başlat
+    loc_manager = localization_manager.get_manager(default_lang="en")
+    loc_manager.set_language(ui_lang)
+
+    page.title = loc_manager.get("app_title")
     page.padding = 0
     
     # --- Modern Tema Ayarları (Material 3) ---
@@ -103,8 +113,6 @@ def main(page: ft.Page):
         font_family="Roboto"
     )
     
-    # Ayarları yükle
-    settings = settings_manager.load_settings()
     page.theme_mode = ft.ThemeMode.DARK if settings.get("theme_mode") == "dark" else ft.ThemeMode.LIGHT
     
     initial_source_lang = settings.get("source_lang", "English")
@@ -115,7 +123,7 @@ def main(page: ft.Page):
     # --- Arayüz Bileşenleri ---
     
     # Durum Çubuğu
-    status_text = ft.Text("Başlatılıyor...", color=ft.Colors.WHITE, size=12, weight=ft.FontWeight.BOLD)
+    status_text = ft.Text(loc_manager.get("initializing"), color=ft.Colors.WHITE, size=12, weight=ft.FontWeight.BOLD)
     status_indicator = ft.Container(
         content=status_text,
         padding=ft.padding.symmetric(horizontal=20, vertical=5),
@@ -136,24 +144,24 @@ def main(page: ft.Page):
             logger.error(f"Ayarlar kaydedilirken hata: {err}")
 
     source_lang_dd = ft.Dropdown(
-        options=lang_options, value=initial_source_lang, label="Kaynak", 
+        options=lang_options, value=initial_source_lang, label=loc_manager.get("source_label"), 
         border_radius=10, content_padding=10, filled=True, dense=True, expand=True,
         on_change=save_language_settings
     )
     target_lang_dd = ft.Dropdown(
-        options=lang_options, value=initial_target_lang, label="Hedef", 
+        options=lang_options, value=initial_target_lang, label=loc_manager.get("target_label"), 
         border_radius=10, content_padding=10, filled=True, dense=True, expand=True,
         on_change=save_language_settings
     )
     
     input_text = ft.TextField(
-        label="Çevrilecek Metin", multiline=True, min_lines=5, max_lines=10, 
+        label=loc_manager.get("input_label"), multiline=True, min_lines=5, max_lines=10, 
         border_color=ft.Colors.OUTLINE, border_radius=15, text_size=16,
-        expand=True, hint_text="Metni buraya girin..."
+        expand=True, hint_text=loc_manager.get("input_hint")
     )
     
     output_text = ft.TextField(
-        label="Çeviri Sonucu", multiline=True, min_lines=5, max_lines=10, 
+        label=loc_manager.get("output_label"), multiline=True, min_lines=5, max_lines=10, 
         read_only=True, border=ft.InputBorder.NONE, text_size=16,
         expand=True
     )
@@ -168,7 +176,7 @@ def main(page: ft.Page):
     )
 
     translate_btn = ft.FloatingActionButton(
-        icon=ft.Icons.TRANSLATE, text="Çevir",
+        icon=ft.Icons.TRANSLATE, text=loc_manager.get("translate_btn"),
         on_click=lambda _: start_translation_thread()
     )
     
@@ -184,7 +192,7 @@ def main(page: ft.Page):
         save_language_settings()
         page.update()
 
-    swap_btn = ft.IconButton(icon=ft.Icons.SWAP_HORIZ, on_click=swap_languages, tooltip="Dilleri Değiştir")
+    swap_btn = ft.IconButton(icon=ft.Icons.SWAP_HORIZ, on_click=swap_languages, tooltip=loc_manager.get("swap_tooltip"))
 
     # Geçmiş Listesi
     history_list = ft.ListView(expand=True, spacing=10, padding=20)
@@ -198,7 +206,7 @@ def main(page: ft.Page):
                     ft.Container(
                         content=ft.Column([
                             ft.Icon(ft.Icons.HISTORY_TOGGLE_OFF, size=64, color=ft.Colors.GREY_400),
-                            ft.Text("Henüz çeviri geçmişi yok.", color=ft.Colors.GREY_500)
+                            ft.Text(loc_manager.get("history_empty"), color=ft.Colors.GREY_500)
                         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                         alignment=ft.alignment.center,
                         padding=50
@@ -240,7 +248,7 @@ def main(page: ft.Page):
 
     def start_translation_thread():
         if not input_text.value:
-            input_text.error_text = "Lütfen metin girin"
+            input_text.error_text = loc_manager.get("input_error_empty")
             input_text.update()
             return
         
@@ -267,11 +275,11 @@ def main(page: ft.Page):
             
             output_text.value = res
             history_manager.add_to_history(txt, res, src, tgt)
-            load_history_items()
+            load_history_items() # Geçmişi güncelle
             logger.info("Çeviri başarılı.")
             
         except Exception as e:
-            error_msg = f"Hata oluştu: {e}"
+            error_msg = f"{loc_manager.get('error_occurred')}{e}"
             logger.error(error_msg)
             output_text.value = error_msg
         finally:
@@ -289,6 +297,54 @@ def main(page: ft.Page):
         settings_manager.save_settings(s)
         page.update()
 
+    def change_ui_language(e):
+        new_lang = e.control.value
+        loc_manager.set_language(new_lang)
+        
+        # Ayarları kaydet
+        s = settings_manager.load_settings()
+        s['ui_language'] = new_lang
+        settings_manager.save_settings(s)
+        
+        update_ui_text()
+        page.update()
+
+    # UI Metin Güncelleme Fonksiyonu
+    def update_ui_text():
+        page.title = loc_manager.get("app_title")
+        
+        # Nav Rail
+        nav_rail.destinations[0].label = loc_manager.get("nav_translate")
+        nav_rail.destinations[1].label = loc_manager.get("nav_history")
+        nav_rail.destinations[2].label = loc_manager.get("nav_settings")
+        
+        # Nav Bar
+        nav_bar.destinations[0].label = loc_manager.get("nav_translate")
+        nav_bar.destinations[1].label = loc_manager.get("nav_history")
+        nav_bar.destinations[2].label = loc_manager.get("nav_settings")
+
+        # Translate View
+        translate_header.value = loc_manager.get("new_translation_title")
+        source_lang_dd.label = loc_manager.get("source_label")
+        target_lang_dd.label = loc_manager.get("target_label")
+        swap_btn.tooltip = loc_manager.get("swap_tooltip")
+        input_text.label = loc_manager.get("input_label")
+        input_text.hint_text = loc_manager.get("input_hint")
+        output_text.label = loc_manager.get("output_label")
+        translate_btn.text = loc_manager.get("translate_btn")
+
+        # History View
+        history_header.value = loc_manager.get("history_title")
+        load_history_items() # Geçmiş boş mesajını güncellemek için
+
+        # Settings View
+        settings_header.value = loc_manager.get("settings_title")
+        dark_mode_text.value = loc_manager.get("dark_mode")
+        clear_history_tile.title.value = loc_manager.get("clear_history_title")
+        clear_history_tile.subtitle.value = loc_manager.get("clear_history_subtitle")
+        ui_lang_dd.label = loc_manager.get("language_select")
+
+
     # --- Dialoglar ---
     def open_clear_history_dialog(e):
         def close_dlg(e):
@@ -298,16 +354,16 @@ def main(page: ft.Page):
             history_manager.clear_history()
             load_history_items()
             page.close(dlg)
-            page.open(ft.SnackBar(ft.Text("Çeviri geçmişi temizlendi!")))
+            page.open(ft.SnackBar(ft.Text(loc_manager.get("history_cleared_msg"))))
             logger.info("Kullanıcı geçmişi temizledi.")
 
         dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Emin misiniz?"),
-            content=ft.Text("Tüm çeviri geçmişi silinecek."),
+            title=ft.Text(loc_manager.get("confirm_title")),
+            content=ft.Text(loc_manager.get("confirm_content")),
             actions=[
-                ft.TextButton("Hayır", on_click=close_dlg),
-                ft.TextButton("Evet", on_click=confirm_clear, style=ft.ButtonStyle(color=ft.Colors.RED)),
+                ft.TextButton(loc_manager.get("no_btn"), on_click=close_dlg),
+                ft.TextButton(loc_manager.get("yes_btn"), on_click=confirm_clear, style=ft.ButtonStyle(color=ft.Colors.RED)),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
@@ -316,12 +372,12 @@ def main(page: ft.Page):
     # --- Views (Sayfa İçerikleri) ---
 
     # Responsive Çeviri Görünümü
+    translate_header = ft.Text(loc_manager.get("new_translation_title"), style=ft.TextThemeStyle.HEADLINE_MEDIUM, color=ft.Colors.PRIMARY)
+    
     translate_view = ft.Container(
         padding=20,
         content=ft.Column([
-            ft.Row([
-                ft.Text("Yeni Çeviri", style=ft.TextThemeStyle.HEADLINE_MEDIUM, color=ft.Colors.PRIMARY),
-            ], alignment=ft.MainAxisAlignment.CENTER),
+            ft.Row([translate_header], alignment=ft.MainAxisAlignment.CENTER),
             
             # Dil Seçimi
             ft.Container(
@@ -342,47 +398,81 @@ def main(page: ft.Page):
         ], scroll=ft.ScrollMode.AUTO)
     )
 
+    history_header = ft.Text(loc_manager.get("history_title"), style=ft.TextThemeStyle.HEADLINE_MEDIUM, color=ft.Colors.PRIMARY)
+
     history_view = ft.Container(
         padding=20,
         content=ft.Column([
-            ft.Text("Geçmiş Çeviriler", style=ft.TextThemeStyle.HEADLINE_MEDIUM, color=ft.Colors.PRIMARY),
+            history_header,
             ft.Divider(),
             history_list
         ])
+    )
+    
+    # Ayarlar UI Elemanları
+    settings_header = ft.Text(loc_manager.get("settings_title"), style=ft.TextThemeStyle.HEADLINE_MEDIUM)
+    dark_mode_text = ft.Text(loc_manager.get("dark_mode"), size=16)
+    
+    clear_history_tile = ft.ListTile(
+        leading=ft.Icon(ft.Icons.DELETE_FOREVER, color=ft.Colors.RED),
+        title=ft.Text(loc_manager.get("clear_history_title"), color=ft.Colors.RED),
+        subtitle=ft.Text(loc_manager.get("clear_history_subtitle")),
+        on_click=open_clear_history_dialog
+    )
+    
+    ui_lang_dd = ft.Dropdown(
+        label=loc_manager.get("language_select"),
+        value=loc_manager.current_lang,
+        options=[
+            ft.dropdown.Option("tr", "Türkçe"),
+            ft.dropdown.Option("en", "English"),
+            ft.dropdown.Option("fr", "Français"),
+            ft.dropdown.Option("de", "Deutsch"),
+            ft.dropdown.Option("es", "Español"),
+            ft.dropdown.Option("it", "Italiano"),
+            ft.dropdown.Option("pt", "Português"),
+            ft.dropdown.Option("ru", "Русский"),
+            ft.dropdown.Option("zh", "中文"),
+            ft.dropdown.Option("ja", "日本語"),
+            ft.dropdown.Option("ko", "한국어"),
+            ft.dropdown.Option("ar", "العربية"),
+        ],
+        on_change=change_ui_language,
+        width=200
     )
 
     settings_view = ft.Container(
         padding=40,
         content=ft.Column([
-            ft.Text("Ayarlar", style=ft.TextThemeStyle.HEADLINE_MEDIUM),
+            settings_header,
             ft.Divider(),
             ft.Row([
                 ft.Icon(ft.Icons.DARK_MODE),
-                ft.Text("Karanlık Mod", size=16),
+                dark_mode_text,
                 ft.Switch(value=(page.theme_mode == ft.ThemeMode.DARK), on_change=toggle_theme)
             ], spacing=20),
             ft.Divider(),
-            ft.ListTile(
-                leading=ft.Icon(ft.Icons.DELETE_FOREVER, color=ft.Colors.RED),
-                title=ft.Text("Geçmişi Temizle", color=ft.Colors.RED),
-                subtitle=ft.Text("Kayıtlı tüm çeviri geçmişini siler."),
-                on_click=open_clear_history_dialog
-            )
+             ft.Row([
+                ft.Icon(ft.Icons.LANGUAGE),
+                ui_lang_dd
+            ], spacing=20),
+            ft.Divider(),
+            clear_history_tile
         ])
     )
 
     # --- Navigasyon ---
     
     destinations = [
-        ft.NavigationRailDestination(icon=ft.Icons.TRANSLATE_OUTLINED, selected_icon=ft.Icons.TRANSLATE, label="Çeviri"),
-        ft.NavigationRailDestination(icon=ft.Icons.HISTORY_OUTLINED, selected_icon=ft.Icons.HISTORY, label="Geçmiş"),
-        ft.NavigationRailDestination(icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label="Ayarlar"),
+        ft.NavigationRailDestination(icon=ft.Icons.TRANSLATE_OUTLINED, selected_icon=ft.Icons.TRANSLATE, label=loc_manager.get("nav_translate")),
+        ft.NavigationRailDestination(icon=ft.Icons.HISTORY_OUTLINED, selected_icon=ft.Icons.HISTORY, label=loc_manager.get("nav_history")),
+        ft.NavigationRailDestination(icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label=loc_manager.get("nav_settings")),
     ]
     
     destinations_bar = [
-        ft.NavigationBarDestination(icon=ft.Icons.TRANSLATE_OUTLINED, selected_icon=ft.Icons.TRANSLATE, label="Çeviri"),
-        ft.NavigationBarDestination(icon=ft.Icons.HISTORY_OUTLINED, selected_icon=ft.Icons.HISTORY, label="Geçmiş"),
-        ft.NavigationBarDestination(icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label="Ayarlar"),
+        ft.NavigationBarDestination(icon=ft.Icons.TRANSLATE_OUTLINED, selected_icon=ft.Icons.TRANSLATE, label=loc_manager.get("nav_translate")),
+        ft.NavigationBarDestination(icon=ft.Icons.HISTORY_OUTLINED, selected_icon=ft.Icons.HISTORY, label=loc_manager.get("nav_history")),
+        ft.NavigationBarDestination(icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label=loc_manager.get("nav_settings")),
     ]
 
     content_area = ft.AnimatedSwitcher(
@@ -419,7 +509,7 @@ def main(page: ft.Page):
         elif index == 1:
             load_history_items()
             content_area.content = history_view
-        elif idx := 2:
+        elif index == 2:
             content_area.content = settings_view
         page.update()
 
@@ -454,7 +544,7 @@ def main(page: ft.Page):
 
     # Başlatma
     controls = [translate_btn, input_text, source_lang_dd, target_lang_dd, swap_btn]
-    threading.Thread(target=initialize_app, args=(page, status_indicator, controls), daemon=True).start()
+    threading.Thread(target=initialize_app, args=(page, status_indicator, controls, loc_manager), daemon=True).start()
 
 if __name__ == "__main__":
     ft.app(target=main)

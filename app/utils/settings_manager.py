@@ -20,7 +20,7 @@ def load_settings():
         print(f"Ayarlar yüklenirken hata oluştu ({e}), varsayılanlara dönülüyor.")
     
     # Varsayılan ayarlar
-    return {"theme_mode": "light"}
+    return {"theme_mode": "light", "ui_language": "en"}
 
 def save_settings(settings):
     """
