@@ -2,6 +2,7 @@ import os
 import yaml
 import argparse
 import torch
+import gc
 from transformers import (
     MT5Tokenizer,
     MT5ForConditionalGeneration,
@@ -14,7 +15,21 @@ from datetime import datetime
 # --- LOGLAMA AYARLARI ---
 log_dir = "logs/predict"
 os.makedirs(log_dir, exist_ok=True)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log_file = os.path.join(log_dir, f"predict_{datetime.now().strftime('%Y%m%d')}.log")
+
+# Logger oluştur
+logger = logging.getLogger("UnwiredPredict")
+logger.setLevel(logging.INFO)
+
+# Dosya Handler
+file_handler = logging.FileHandler(log_file)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(file_handler)
+
+# Konsol Handler
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+logger.addHandler(console_handler)
 
 # --- MODEL YÜKLEME FONKSİYONU ---
 def load_model(config_path="config.yaml"):
@@ -22,7 +37,7 @@ def load_model(config_path="config.yaml"):
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
     except Exception as e:
-        logging.error(f"'{config_path}' dosyası okunurken hata oluştu: {e}")
+        logger.error(f"'{config_path}' dosyası okunurken hata oluştu: {e}")
         raise ValueError(f"Konfigürasyon dosyası okunamadı: {e}")
 
     lora_config = config['system']['lora']
@@ -47,11 +62,11 @@ def load_model(config_path="config.yaml"):
     model_dir = os.path.join(config['system']['output_dir'], base_dir, lang_dir)
 
     if not os.path.exists(model_dir):
-        logging.error(f"Model dizini bulunamadı: '{model_dir}'")
+        logger.error(f"Model dizini bulunamadı: '{model_dir}'")
         raise FileNotFoundError(f"Model dizini bulunamadı: {model_dir}")
 
     try:
-        logging.info(f"Model yükleniyor: {model_dir}")
+        logger.info(f"Model yükleniyor: {model_dir}")
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -71,10 +86,11 @@ def load_model(config_path="config.yaml"):
         return model, tokenizer, config
 
     except Exception as e:
-        logging.error(f"Model yükleme hatası: {e}")
+        logger.error(f"Model yükleme hatası: {e}")
         raise RuntimeError(f"Model yükleme hatası: {e}")
 
 # --- ÇEVİRİ FONKSİYONU ---
+@torch.inference_mode()
 def translate(model, tokenizer, input_texts, source_lang, target_lang, max_len=128, num_beams=4):
     is_single = isinstance(input_texts, str)
     if is_single:
@@ -82,15 +98,15 @@ def translate(model, tokenizer, input_texts, source_lang, target_lang, max_len=1
 
     prompts = [f"translate {source_lang} to {target_lang}: " + text for text in input_texts]
 
-    inputs = tokenizer(
-        prompts,
-        return_tensors="pt",
-        padding=True,
-        truncation=True,
-        max_length=max_len
-    ).to(model.device)
+    try:
+        inputs = tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=max_len
+        ).to(model.device)
 
-    with torch.no_grad():
         outputs = model.generate(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
@@ -99,8 +115,19 @@ def translate(model, tokenizer, input_texts, source_lang, target_lang, max_len=1
             early_stopping=True
         )
         translations = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+        
+        result = translations[0] if is_single else translations
+        return result
 
-    return translations[0] if is_single else translations
+    except Exception as e:
+        logger.error(f"Çeviri hatası: {e}")
+        return f"Hata: {str(e)}"
+    
+    finally:
+        # Bellek Temizliği
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
 
 # --- ANA FONKSİYONU ---
 def main():
@@ -110,26 +137,30 @@ def main():
     parser.add_argument("--tgt", type=str, help="Hedef dil (Opsiyonel, config'den alır)")
     args = parser.parse_args()
 
-    model, tokenizer, config = load_model()
+    try:
+        model, tokenizer, config = load_model()
 
-    src_lang = args.src if args.src else config['language']['source']
-    tgt_lang = args.tgt if args.tgt else config['language']['target']
-    
-    logging.info(f"Çeviri: {src_lang} -> {tgt_lang}")
-    
-    max_len = config['training'].get('max_len', 128)
+        src_lang = args.src if args.src else config['language']['source']
+        tgt_lang = args.tgt if args.tgt else config['language']['target']
+        
+        logger.info(f"Çeviri Başlatılıyor: {src_lang} -> {tgt_lang}")
+        
+        max_len = config['training'].get('max_len', 128)
 
-    result = translate(
-        model=model,
-        tokenizer=tokenizer,
-        input_texts=args.text,
-        source_lang=src_lang,
-        target_lang=tgt_lang,
-        max_len=max_len
-    )
-    
-    print(f"\n[{src_lang}] {args.text}")
-    print(f"[{tgt_lang}] {result}\n")
+        result = translate(
+            model=model,
+            tokenizer=tokenizer,
+            input_texts=args.text,
+            source_lang=src_lang,
+            target_lang=tgt_lang,
+            max_len=max_len
+        )
+        
+        print(f"\n[{src_lang}] {args.text}")
+        print(f"[{tgt_lang}] {result}\n")
+        
+    except Exception as e:
+        logger.critical(f"Kritik Hata: {e}")
 
 if __name__ == "__main__":
     main()

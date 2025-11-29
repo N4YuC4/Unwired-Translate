@@ -62,5 +62,11 @@ def add_to_history(source_text, target_text, source_lang, target_lang):
         history = history[:max_history_entries]
     save_history(history)
 
+def clear_history():
+    """
+    Clears the translation history by saving an empty list.
+    """
+    save_history([])
+
 # Ensure the artifacts directory exists for the history file
 os.makedirs(os.path.dirname(_get_history_file_path()), exist_ok=True)
