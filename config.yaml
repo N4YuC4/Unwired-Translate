@@ -1,8 +1,8 @@
 # --- Proje ve Model Ayarları ---
 proje_adi: "Translation"
 model_mimarisi: "mt5-small"
-model_teknigi: "4bit-QLoRA"
-versiyon: "V1.1"
+model_teknigi: "16bit-LoRA"
+versiyon: "V1"
 model_adi: "google/mt5-small"
 
 # --- Dil Ayarları ---
@@ -12,7 +12,7 @@ language:
 
 # --- Veri Ayarları ---
 dataset:
-  names: ["HPLT"]
+  names: ["LAINCHAN","HPLT"]
   base_path: "datasets"
   start_line: 0
   max_lines: 230000
@@ -29,7 +29,7 @@ dataset:
 training:
   epochs: 4
   train_batch_size: 15
-  lr: 0.002
+  lr: 0.0005
   gradient_accumulation_steps: 4
   percentile: 96
   max_len: 128

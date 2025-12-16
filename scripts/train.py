@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import logging
 from datetime import datetime
 import evaluate
+import ctranslate2
+import shutil
 
 from torch.utils.data import Dataset, DataLoader
 from transformers import (
@@ -265,21 +267,23 @@ def main():
     val_loader = DataLoader(val_dataset, batch_size=eval_bs, shuffle=False, num_workers=4, pin_memory=True)
 
     # 4. Model Hazırlığı
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
-    )
+    # bnb_config = BitsAndBytesConfig(
+    #     load_in_4bit=True,
+    #     bnb_4bit_quant_type="nf4",
+    #     bnb_4bit_compute_dtype=torch.bfloat16
+    # )
     
-    logging.info("Model yükleniyor (4-bit)...")
-    base_model = MT5ForConditionalGeneration.from_pretrained(
-        model_name,
-        quantization_config=bnb_config,
-        device_map="auto",
-        low_cpu_mem_usage=True
-    )
-    base_model = prepare_model_for_kbit_training(base_model)
+print("Temel model Float16 (16-bit) olarak yükleniyor (No Quantization)...")
+base_model = MT5ForConditionalGeneration.from_pretrained(
+    model_name,
+    # quantization_config=bnb_config,
+    torch_dtype=torch.float16,
+    device_map="auto",
+    low_cpu_mem_usage=True
+)
+    # base_model = prepare_model_for_kbit_training(base_model)
+    base_model.gradient_checkpointing_enable()
+    base_model.enable_input_require_grads()
     
     qlora_params = config['qlora']
     lora_config = LoraConfig(
@@ -306,17 +310,26 @@ def main():
         max_len=MAX_LEN
     )
     
-    trainer = pl.Trainer(
-        max_epochs=train_params['epochs'],
-        accelerator="gpu" if torch.cuda.is_available() and config['system']['gpu'] else "cpu",
-        devices=1,
-        precision="32-true",
-        accumulate_grad_batches=train_params['gradient_accumulation_steps'],
-        enable_progress_bar=False,
-        callbacks=[AdvancedLoggingCallback(), VRAMCleanupCallback()],
-        logger=CSVLogger(save_dir="logs", name=config['proje_adi']),
-        enable_model_summary=True
-    )
+# --- 3. TRAINER YAPILANDIRMASI ---
+trainer = pl.Trainer(
+    max_epochs=train_params['epochs'],
+    accelerator="gpu" if torch.cuda.is_available() and config['system']['gpu'] else "cpu",
+    devices=1,
+    precision="16-mixed",
+    accumulate_grad_batches=train_params['gradient_accumulation_steps'],
+    gradient_clip_val=0.5,
+    
+    num_sanity_val_steps=0, 
+    enable_progress_bar=False, 
+    
+    callbacks=[
+        AdvancedLoggingCallback(log_every_n_steps=50), 
+        VRAMCleanupCallback() 
+    ],
+    
+    logger=CSVLogger(save_dir=LOG_DIR, name=config['proje_adi']),
+    enable_model_summary=True
+)
     
     logging.info("Eğitim Başlıyor...")
     trainer.fit(lightning_model, train_loader, val_loader)
@@ -337,9 +350,44 @@ def main():
     meteor_score = results['meteor']
     logging.info(f"METEOR Skoru: {meteor_score:.4f}")
     
-    # 7. Kaydetme
-    lora_sys_config = config['system']['lora']
+    # 7. Model Birleştirme ve CTranslate2 Dönüştürme
     
+    # 7.1 Adapter'ı Geçici Kaydet
+    logging.info("Geçici adapter kaydediliyor...")
+    temp_adapter_path = os.path.join(config['system']['output_dir'], "temp_adapter")
+    model = lightning_model.model
+    model.save_pretrained(temp_adapter_path)
+    tokenizer.save_pretrained(temp_adapter_path)
+    
+    # Belleği Temizle
+    del lightning_model
+    del model
+    del base_model
+    del trainer
+    torch.cuda.empty_cache()
+    gc.collect()
+    
+    # 7.2 Base Modeli Yükle (CPU, Float32 - Merge için)
+    logging.info("Base model (CPU) yükleniyor...")
+    base_model = MT5ForConditionalGeneration.from_pretrained(
+        model_name,
+        device_map="cpu",
+        torch_dtype=torch.float32
+    )
+    
+    # 7.3 Adapter ile Birleştir
+    logging.info("LoRA adapter birleştiriliyor...")
+    model_to_merge = PeftModel.from_pretrained(base_model, temp_adapter_path)
+    merged_model = model_to_merge.merge_and_unload()
+    
+    # 7.4 Birleşmiş Modeli Kaydet (Geçici)
+    merged_output_path = os.path.join(config['system']['output_dir'], "temp_merged_model")
+    logging.info(f"Birleştirilmiş model kaydediliyor: {merged_output_path}")
+    merged_model.save_pretrained(merged_output_path)
+    tokenizer.save_pretrained(merged_output_path)
+    
+    # 7.5 CTranslate2 Dönüştürme
+    lora_sys_config = config['system']['lora']
     dataset_names = config['dataset'].get('names', [])
     if isinstance(dataset_names, list) and dataset_names:
         veri_seti_str = "-".join([str(x).upper() for x in dataset_names])
@@ -357,34 +405,44 @@ def main():
         source_lang=config['language']['source'],
         target_lang=config['language']['target']
     )
-    # Output dir düzeltmesi: models/MT5.../Turkish-English
-    output_path = os.path.join(config['system']['output_dir'], base_dir, lang_dir)
     
-    logging.info(f"Model kaydediliyor: {output_path}")
-    model = lightning_model.model
-    model.save_pretrained(output_path)
-    tokenizer.save_pretrained(output_path)
+    ct2_output_path = os.path.join(config['system']['output_dir'], base_dir, lang_dir)
+    logging.info(f"CTranslate2 formatına dönüştürülüyor (int8): {ct2_output_path}")
+    
+    converter = ctranslate2.converters.TransformersConverter(merged_output_path)
+    converter.convert(
+        output_dir=ct2_output_path,
+        quantization="int8",
+        force=True
+    )
+    logging.info("Dönüştürme tamamlandı.")
+    
+    # Final tokenizer'ı da CT2 modeli ile aynı yere kaydet
+    tokenizer.save_pretrained(ct2_output_path)
+    
+    # 7.6 Temizlik
+    logging.info("Geçici dosyalar temizleniyor...")
+    shutil.rmtree(temp_adapter_path, ignore_errors=True)
+    shutil.rmtree(merged_output_path, ignore_errors=True)
+    logging.info("Temizlik tamamlandı.")
     
     # Grafik Kaydetme
-    train_losses = lightning_model.train_losses_history
-    val_losses = lightning_model.val_losses_history
-    
     results_dir = config['artifacts']['results_dir']
     os.makedirs(results_dir, exist_ok=True)
     
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(range(1, len(train_losses) + 1), train_losses, label='Eğitim Kaybı', color='blue')
-    if val_losses:
-        ax.plot(range(1, len(val_losses) + 1), val_losses, label='Doğrulama Kaybı', color='red', linestyle='--')
-    ax.set_title(f'Model Kayıp Grafiği\nMETEOR: {meteor_score:.4f}')
-    ax.legend()
-    ax.grid(True, alpha=0.6)
-    plt.savefig(os.path.join(results_dir, 'loss_graph.png'))
+    if len(train_losses) > 0: # Check if we have losses to plot (might be empty if restored or something)
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(range(1, len(train_losses) + 1), train_losses, label='Eğitim Kaybı', color='blue')
+        if val_losses:
+            ax.plot(range(1, len(val_losses) + 1), val_losses, label='Doğrulama Kaybı', color='red', linestyle='--')
+        ax.set_title(f'Model Kayıp Grafiği\nMETEOR: {meteor_score:.4f}')
+        ax.legend()
+        ax.grid(True, alpha=0.6)
+        plt.savefig(os.path.join(results_dir, 'loss_graph.png'))
     
     # Metrics JSON kaydetme
-    import json
     with open(os.path.join(results_dir, "metrics.json"), "w") as f:
-        json.dump({"meteor": meteor_score, "final_train_loss": train_losses[-1] if train_losses else 0}, f)
+        json.dump({"meteor": meteor_score}, f)
 
 if __name__ == "__main__":
     main()

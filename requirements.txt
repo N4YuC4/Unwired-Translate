@@ -22,3 +22,4 @@ matplotlib
 pytorch_lightning
 sentence-transformers
 requests
+ctranslate2

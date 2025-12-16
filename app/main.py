@@ -69,8 +69,8 @@ def initialize_app(page: ft.Page, status_indicator: ft.Container, controls_to_en
     
     try:
         logger.info("Model yükleme işlemi başlatıldı.")
-        model, tokenizer, config = predict.load_model()
-        if model and tokenizer:
+        model, config = predict.load_model()
+        if model:
             model_loaded = True
             supported_source_lang = config.get('language', {}).get('source', 'English')
             supported_target_lang = config.get('language', {}).get('target', 'Turkish')
@@ -84,7 +84,8 @@ def initialize_app(page: ft.Page, status_indicator: ft.Container, controls_to_en
     except Exception as e:
         model_loaded = False
         logger.critical(f"Model yüklenirken kritik hata: {e}")
-        page.run_thread(lambda: update_status(None, ft.Colors.RED_700, False, raw_message=f"{loc_manager.get('error_prefix')}{e}"))
+        # Capture 'e' in default arg to avoid NameError in lambda
+        page.run_thread(lambda err=e: update_status(None, ft.Colors.RED_700, False, raw_message=f"{loc_manager.get('error_prefix')}{err}"))
 
 # --- Flet Ana Fonksiyonu ---
 def main(page: ft.Page):
@@ -197,6 +198,23 @@ def main(page: ft.Page):
     # Geçmiş Listesi
     history_list = ft.ListView(expand=True, spacing=10, padding=20)
     
+    def restore_from_history(entry):
+        try:
+            input_text.value = entry.get('source_text', '')
+            output_text.value = entry.get('target_text', '')
+            
+            direction = entry.get('direction', '')
+            if "->" in direction:
+                parts = direction.split("->")
+                if len(parts) == 2:
+                    source_lang_dd.value = parts[0].strip()
+                    target_lang_dd.value = parts[1].strip()
+                    save_language_settings()
+            
+            change_nav(0)
+        except Exception as e:
+            logger.error(f"Geçmişten yükleme hatası: {e}")
+
     def load_history_items():
         try:
             history_list.controls.clear()
@@ -223,6 +241,8 @@ def main(page: ft.Page):
                             elevation=2,
                             content=ft.Container(
                                 padding=15,
+                                ink=True,
+                                on_click=lambda e, ent=entry: restore_from_history(ent),
                                 content=ft.Column([
                                     ft.Row([
                                         ft.Container(
@@ -269,7 +289,7 @@ def main(page: ft.Page):
             logger.info(f"Çeviri isteği: {src} -> {tgt}")
             
             res = predict.translate(
-                model, tokenizer, txt, src, tgt, 
+                model, txt, src, tgt, 
                 max_len=config.get('training', {}).get('max_len', 128)
             )
             
