@@ -1,7 +1,6 @@
-
 # Unwired Translate 🌍
 
-**Unwired Translate**, Google'ın **mT5 (Multilingual T5)** modelini temel alan, **4-bit QLoRA** tekniği ile optimize edilmiş ve son kullanıcı için modern bir **Flet** arayüzü sunan açık kaynaklı bir makine çevirisi projesidir.
+**Unwired Translate**, Google'ın **mT5 (Multilingual T5)** modelini temel alan, **16-bit LoRA** tekniği ile eğitilmiş ve **8-bit CTranslate2** ile optimize edilmiş, modern bir **Flet** arayüzü sunan açık kaynaklı bir makine çevirisi projesidir.
 
 Bu proje; veri toplama (scraping), anlamsal veri temizleme (semantic cleaning), model eğitimi ve masaüstü uygulaması geliştirme süreçlerinin tamamını kapsayan uçtan uca (end-to-end) bir çözümdür.
 
@@ -9,7 +8,7 @@ Bu proje; veri toplama (scraping), anlamsal veri temizleme (semantic cleaning), 
 
 ## 🚀 Performance & Experiments (Latest Run)
 
-Modelin eğitim süreçleri, hiperparametre optimizasyonu ve detaylı performans metrikleri **Kaggle** üzerinde şeffaf bir şekilde dökümante edilmiştir.
+Modelin eğitim süreçleri, hiperparametre optimizasyonu ve detaylı performans metrikleri **Kaggle** üzerinde şeffaf bir şekilde dökümante edilmiştir. mT5-small gibi küçük modellerde kararlılığı artırmak için eğitim **16-bit Float16** hassasiyetinde yapılırken, son kullanıcıya sunulan model **int8 (8-bit)** quantization ile optimize edilmiştir.
 
 📊 **Kaggle Notebook & Eğitim Logları:** [Kaggle Notebook](https://www.kaggle.com/code/n4yuc4/t5-model-based-machine-translation)
 
@@ -18,21 +17,18 @@ Modelin eğitim süreçleri, hiperparametre optimizasyonu ve detaylı performans
 ## 🛠 Features
 
 * **Advanced NLP Pipeline:**
-* **Custom Scraper:** `lainchan_veri_kazıma.py` ile hedefe yönelik veri toplama.
-* **Semantic Cleaning:** `SentenceTransformers` kullanılarak yapılan anlamsal benzerlik analizi ile düşük kaliteli çeviri çiftlerinin elenmesi.
+    * **Semantic Cleaning:** `SentenceTransformers` kullanılarak yapılan anlamsal benzerlik analizi ile düşük kaliteli çeviri çiftlerinin elenmesi.
+    * **Data Preprocessing:** Parquet formatında optimize edilmiş veri yükleme ve temizleme süreçleri.
 
-
-* **Efficient Fine-Tuning:**
-* `bitsandbytes` ve `peft` kütüphaneleri kullanılarak **4-bit Quantization** ve **QLoRA** entegrasyonu.
-* Düşük VRAM tüketimi ile yüksek performanslı eğitim.
-
+* **Efficient Fine-Tuning & Optimization:**
+    * **16-bit LoRA Training:** Model kararlılığı için 16-bit Float16/Mixed-Precision eğitimi.
+    * **8-bit CTranslate2 Inference:** Çıkarım (inference) aşamasında int8 quantization ile maksimum hız ve minimum CPU/GPU kullanımı.
 
 * **Modern GUI (Flet):**
-* Karanlık/Aydınlık mod desteği.
-* Çeviri geçmişi yönetimi (History Manager).
-* Çoklu dil desteği (Arayüz için 12+ dil).
-
-
+    * **Responsive Tasarım:** Masaüstü ve mobil ekran boyutlarına tam uyum.
+    * **Akıllı Metin Düzeltme:** `SymSpell` entegrasyonu ile "Bunu mu demek istediniz?" önerileri.
+    * **Gelişmiş Geçmiş Yönetimi:** Tıklanabilir geçmiş öğeleri ile hızlı tekrar çeviri.
+    * **Karanlık/Aydınlık mod** ve 12+ dil desteği.
 
 ---
 
@@ -43,17 +39,17 @@ Unwired-Translate/
 ├── app/
 │   ├── main.py              # Flet tabanlı GUI uygulaması
 │   ├── locales/             # Arayüz dil dosyaları (JSON)
-│   └── utils/               # Yardımcı araçlar (History, Localization, Settings)
+│   ├── assets/dictionaries/ # Yazım denetimi sözlükleri
+│   └── utils/               # Spell Checker, History, Localization, Settings
 ├── scripts/
-│   ├── train.py             # PyTorch Lightning eğitim döngüsü
-│   ├── predict.py           # Model inference ve test betiği
+│   ├── train.py             # 16-bit LoRA eğitim ve CTranslate2 dönüşüm betiği
+│   ├── predict.py           # 8-bit CTranslate2 tabanlı hızlı inference betiği
 │   ├── eval.py              # METEOR skoru hesaplama
-│   ├── lainchan_veri_kazıma.py  # Web scraping aracı
-│   └── clean_and_convert...py   # Veri ön işleme ve temizleme
+│   ├── data_preprocessing.py # Veri birleştirme ve train/test ayırma
+│   └── clean_and_convert...py # Veri temizleme ve Parquet formatına dönüştürme
 ├── config.yaml              # Tüm hiperparametrelerin yönetildiği konfigürasyon
 ├── requirements.txt         # Proje bağımlılıkları
 └── README.md
-
 ```
 
 ---
@@ -64,59 +60,52 @@ Unwired-Translate/
 ```bash
 git clone https://github.com/n4yuc4/unwired-translate.git
 cd unwired-translate
-
 ```
-
 
 2. **Sanal ortam oluşturun (Önerilen):**
 ```bash
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
-
 ```
-
 
 3. **Bağımlılıkları yükleyin:**
 ```bash
 pip install -r requirements.txt
-
 ```
-
-
 
 ---
 
 ## 💻 Usage
 
 ### 1. Uygulamayı Çalıştırma (GUI)
-
 Eğitilmiş modeli arayüz üzerinden kullanmak için:
-
 ```bash
 python app/main.py
-
 ```
 
 ### 2. Model Eğitimi (Training)
-
-Yeni bir model eğitmek için önce `config.yaml` dosyasını düzenleyin, ardından:
-
+Yeni bir model eğitmek, adaptörleri birleştirmek ve 8-bit CTranslate2 formatına dönüştürmek için:
 ```bash
 python scripts/train.py
-
 ```
 
-### 3. Veri Seti Oluşturma
-
-Kendi veri setinizi oluşturmak için scraper ve temizleme araçlarını kullanabilirsiniz:
-
+### 3. Veri Seti Hazırlama
 ```bash
-# Veri kazıma
-python scripts/lainchan_veri_kazıma.py
+# 1. Ham metinleri temizleme ve Parquet formatına dönüştürme
+# Kullanım: python scripts/clean_and_convert_to_parquet.py <kaynak_dil> <hedef_dil> <veri_seti_adi>
+python scripts/clean_and_convert_to_parquet.py en tr my_dataset
 
-# Veriyi temizleme ve Parquet formatına dönüştürme
-python scripts/clean_and_convert_to_parquet.py source_lang target_lang dataset_name
+# 2. Farklı veri setlerini birleştirme ve train/test setlerini oluşturma
+python scripts/data_preprocessing.py
+```
 
+### 4. CLI Üzerinden Çeviri ve Değerlendirme
+```bash
+# Tekil çeviri testi
+python scripts/predict.py "Hello, how are you?" --src English --tgt Turkish
+
+# Model performansını METEOR skoru ile test etme
+python scripts/eval.py
 ```
 
 ---
@@ -124,30 +113,30 @@ python scripts/clean_and_convert_to_parquet.py source_lang target_lang dataset_n
 ## 🔧 Configuration (`config.yaml`)
 
 Proje modüler bir yapıdadır ve tüm ayarlar `config.yaml` üzerinden yönetilir:
-
 ```yaml
-model_mimarisi: "mt5-small"
-model_teknigi: "4bit-QLoRA"
+model_name: "google/mt5-small"
 training:
-  epochs: 4
-  lr: 0.002
-  batch_size: 15
-qlora:
-  lora_rank: 64
-  target_modules: "all-linear"
-
+  precision: "16-mixed" # 16-bit hassasiyet
+  epochs: 5
+  learning_rate: 0.0001
 ```
 
 ---
 
-## 🤝 Contributing
-
-Katkılarınızı bekliyoruz! Lütfen bir "Issue" açarak veya "Pull Request" göndererek projeye destek olun.
-
-## 📜 License
-
-Bu proje [MIT License](https://www.google.com/search?q=LICENSE) altında lisanslanmıştır.
+## 🛡️ Git Ignore & Local Files
+Aşağıdaki dizinler çalışma anında üretilir ve repo boyutunu korumak için `.gitignore` kapsamındadır:
+* `/models/`: Eğitilmiş ve 8-bit'e dönüştürülmüş CTranslate2 model dosyaları.
+* `/artifacts/`: Uygulama ayarları (`app_settings.json`) ve çeviri geçmişi (`translation_history.json`).
+* `/datasets/`: Ham ve işlenmiş eğitim verileri.
+* `logs/`: Uygulama ve eğitim logları.
 
 ---
 
+## 🤝 Contributing
+Katkılarınızı bekliyoruz! Lütfen bir "Issue" açarak veya "Pull Request" göndererek projeye destek olun.
+
+## 📜 License
+Bu proje [MIT License](LICENSE) altında lisanslanmıştır.
+
+---
 **Developed by [Nazmi Yücel Çan](https://github.com/N4YuC4)**
