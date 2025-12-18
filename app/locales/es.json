@@ -22,7 +22,7 @@
   "no_btn": "No",
   "yes_btn": "Sí",
   "history_cleared_msg": "¡Historial de traducción borrado!",
-  "new_translation_title": "Nueva traducción",
+  "new_translation_title": "Unwired Translate",
   "history_title": "Historial de traducción",
   "settings_title": "Configuración",
   "dark_mode": "Modo oscuro",
@@ -31,5 +31,7 @@
   "nav_translate": "Traducir",
   "nav_history": "Historial",
   "nav_settings": "Configuración",
-  "language_select": "Idioma de la interfaz"
+  "language_select": "Idioma de la interfaz",
+  "did_you_mean": "¿Quiso decir?",
+  "copied_to_clipboard": "Copiado al portapapeles"
 }

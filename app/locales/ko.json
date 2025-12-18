@@ -22,7 +22,7 @@
   "no_btn": "아니요",
   "yes_btn": "예",
   "history_cleared_msg": "번역 기록이 삭제되었습니다!",
-  "new_translation_title": "새 번역",
+  "new_translation_title": "Unwired Translate",
   "history_title": "번역 기록",
   "settings_title": "설정",
   "dark_mode": "다크 모드",
@@ -31,5 +31,7 @@
   "nav_translate": "번역",
   "nav_history": "기록",
   "nav_settings": "설정",
-  "language_select": "인터페이스 언어"
+  "language_select": "인터페이스 언어",
+  "did_you_mean": "혹시 이 단어를 찾으셨나요?",
+  "copied_to_clipboard": "클립보드에 복사됨"
 }

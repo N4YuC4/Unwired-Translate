@@ -22,7 +22,7 @@
   "no_btn": "Nein",
   "yes_btn": "Ja",
   "history_cleared_msg": "Übersetzungsverlauf gelöscht!",
-  "new_translation_title": "Neue Übersetzung",
+  "new_translation_title": "Unwired Translate",
   "history_title": "Übersetzungsverlauf",
   "settings_title": "Einstellungen",
   "dark_mode": "Dunkelmodus",
@@ -31,5 +31,7 @@
   "nav_translate": "Übersetzen",
   "nav_history": "Verlauf",
   "nav_settings": "Einstellungen",
-  "language_select": "Sprache der Benutzeroberfläche"
+  "language_select": "Sprache der Benutzeroberfläche",
+  "did_you_mean": "Meinten Sie?",
+  "copied_to_clipboard": "In die Zwischenablage kopiert"
 }

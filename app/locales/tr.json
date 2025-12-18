@@ -22,7 +22,7 @@
   "no_btn": "Hayır",
   "yes_btn": "Evet",
   "history_cleared_msg": "Çeviri geçmişi temizlendi!",
-  "new_translation_title": "Yeni Çeviri",
+  "new_translation_title": "Unwired Translate",
   "history_title": "Geçmiş Çeviriler",
   "settings_title": "Ayarlar",
   "dark_mode": "Karanlık Mod",
@@ -31,5 +31,7 @@
   "nav_translate": "Çeviri",
   "nav_history": "Geçmiş",
   "nav_settings": "Ayarlar",
-  "language_select": "Arayüz Dili"
+  "language_select": "Arayüz Dili",
+  "did_you_mean": "Bunu mu demek istediniz?",
+  "copied_to_clipboard": "Panoya kopyalandı"
 }

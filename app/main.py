@@ -9,7 +9,7 @@ from datetime import datetime
 # Proje kök dizinini sisteme ekle
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from scripts import predict
-from utils import history_manager, settings_manager, localization_manager
+from utils import history_manager, settings_manager, localization_manager, spell_checker
 
 # --- LOGLAMA AYARLARI ---
 log_dir = "logs/app"
@@ -161,6 +161,26 @@ def main(page: ft.Page):
         expand=True, hint_text=loc_manager.get("input_hint")
     )
     
+    # Öneri Bileşeni (Spell Checker)
+    suggestion_text = ft.Text("", color=ft.Colors.BLUE_400, weight=ft.FontWeight.BOLD)
+    did_you_mean_label = ft.Text(loc_manager.get("did_you_mean"), color=ft.Colors.GREY_500, size=12)
+    
+    suggestion_container = ft.Container(
+        content=ft.Row([
+            did_you_mean_label,
+            ft.TextButton(content=suggestion_text, style=ft.ButtonStyle(padding=0), on_click=lambda e: apply_suggestion(e)),
+        ], spacing=5),
+        padding=ft.padding.only(left=10, top=5),
+        visible=False
+    )
+    
+    def apply_suggestion(e):
+        new_text = suggestion_text.value
+        input_text.value = new_text
+        suggestion_container.visible = False
+        page.update()
+        start_translation_thread() # Düzeltilmiş metinle tekrar çevir
+
     output_text = ft.TextField(
         label=loc_manager.get("output_label"), multiline=True, min_lines=5, max_lines=10, 
         read_only=True, border=ft.InputBorder.NONE, text_size=16,
@@ -168,7 +188,20 @@ def main(page: ft.Page):
     )
     
     output_container = ft.Container(
-        content=output_text,
+        content=ft.Stack([
+            output_text,
+            ft.Container(
+                content=ft.IconButton(
+                    icon=ft.Icons.COPY,
+                    icon_size=20,
+                    tooltip=loc_manager.get("copied_to_clipboard"),
+                    on_click=lambda _: copy_to_clipboard(output_text.value),
+                    style=ft.ButtonStyle(padding=5),
+                ),
+                right=0,
+                bottom=0,
+            )
+        ]),
         padding=10,
         border_radius=15,
         bgcolor=ft.Colors.GREY_900 if page.theme_mode == ft.ThemeMode.DARK else ft.Colors.GREY_200,
@@ -266,6 +299,26 @@ def main(page: ft.Page):
 
     # --- Mantıksal İşlemler ---
 
+    def on_input_change(e):
+        # Timer özelliğini fonksiyon üzerinde sakla (Static variable simulation)
+        if hasattr(on_input_change, "timer") and on_input_change.timer:
+            on_input_change.timer.cancel()
+        
+        if not input_text.value:
+            output_text.value = ""
+            suggestion_container.visible = False
+            page.update()
+            return
+
+        # 1.0 saniye gecikme
+        on_input_change.timer = threading.Timer(1.0, start_translation_thread)
+        on_input_change.timer.start()
+
+    def copy_to_clipboard(text):
+        if not text: return
+        page.set_clipboard(text)
+        page.open(ft.SnackBar(ft.Text(loc_manager.get("copied_to_clipboard")), duration=1000))
+
     def start_translation_thread():
         if not input_text.value:
             input_text.error_text = loc_manager.get("input_error_empty")
@@ -286,6 +339,25 @@ def main(page: ft.Page):
             tgt = target_lang_dd.value
             txt = input_text.value
             
+            # Spell Checker Mantığı
+            # Sadece kısa metinlerde ve desteklenen dillerde çalıştır
+            if src in ["English", "Turkish"] and txt and len(txt) < 1000:
+                try:
+                    checker = spell_checker.SpellChecker()
+                    corrected = checker.correct(txt, src)
+                    if corrected and corrected != txt:
+                        suggestion_text.value = corrected
+                        suggestion_container.visible = True
+                    else:
+                        suggestion_container.visible = False
+                except Exception as sc_err:
+                    logger.warning(f"Spell checker hatası: {sc_err}")
+                    suggestion_container.visible = False
+            else:
+                suggestion_container.visible = False
+            
+            page.update() # UI güncelle
+
             logger.info(f"Çeviri isteği: {src} -> {tgt}")
             
             res = predict.translate(
@@ -344,7 +416,8 @@ def main(page: ft.Page):
         nav_bar.destinations[2].label = loc_manager.get("nav_settings")
 
         # Translate View
-        translate_header.value = loc_manager.get("new_translation_title")
+        translate_title_text.value = loc_manager.get("new_translation_title")
+        did_you_mean_label.value = loc_manager.get("did_you_mean")
         source_lang_dd.label = loc_manager.get("source_label")
         target_lang_dd.label = loc_manager.get("target_label")
         swap_btn.tooltip = loc_manager.get("swap_tooltip")
@@ -392,12 +465,39 @@ def main(page: ft.Page):
     # --- Views (Sayfa İçerikleri) ---
 
     # Responsive Çeviri Görünümü
-    translate_header = ft.Text(loc_manager.get("new_translation_title"), style=ft.TextThemeStyle.HEADLINE_MEDIUM, color=ft.Colors.PRIMARY)
+    translate_title_text = ft.Text(
+        loc_manager.get("new_translation_title"),
+        style=ft.TextThemeStyle.HEADLINE_MEDIUM,
+        color=ft.Colors.PRIMARY,
+        weight=ft.FontWeight.BOLD,
+    )
+    translate_header = ft.Row(
+        [
+            ft.Icon(ft.Icons.TRANSLATE, color=ft.Colors.PRIMARY, size=30),
+            translate_title_text,
+        ],
+        alignment=ft.MainAxisAlignment.CENTER,
+    )
     
+    input_stack = ft.Stack([
+        input_text,
+        ft.Container(
+            content=ft.IconButton(
+                icon=ft.Icons.COPY, 
+                icon_size=20, 
+                tooltip=loc_manager.get("copied_to_clipboard"),
+                on_click=lambda _: copy_to_clipboard(input_text.value),
+                style=ft.ButtonStyle(padding=5),
+            ),
+            right=5,
+            bottom=5,
+        )
+    ])
+
     translate_view = ft.Container(
         padding=20,
         content=ft.Column([
-            ft.Row([translate_header], alignment=ft.MainAxisAlignment.CENTER),
+            translate_header,
             
             # Dil Seçimi
             ft.Container(
@@ -409,7 +509,7 @@ def main(page: ft.Page):
             
             # Metin Alanları (ResponsiveRow ile)
             ft.ResponsiveRow([
-                ft.Column(col={"sm": 12, "md": 6}, controls=[input_text]),
+                ft.Column(col={"sm": 12, "md": 6}, controls=[input_stack, suggestion_container]),
                 ft.Column(col={"sm": 12, "md": 6}, controls=[output_container]),
             ]),
             
@@ -561,6 +661,9 @@ def main(page: ft.Page):
 
     page.on_resized = handle_resize
     handle_resize(None) # İlk yükleme
+
+    # Event Atamaları
+    input_text.on_change = on_input_change
 
     # Başlatma
     controls = [translate_btn, input_text, source_lang_dd, target_lang_dd, swap_btn]

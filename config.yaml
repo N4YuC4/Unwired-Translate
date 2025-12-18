@@ -1,8 +1,8 @@
 # --- Proje ve Model Ayarları ---
 proje_adi: "Translation"
 model_mimarisi: "mt5-small"
-model_teknigi: "16bit-LoRA"
-versiyon: "V1"
+model_teknigi: "8bit-LoRA"
+versiyon: "V1.1"
 model_adi: "google/mt5-small"
 
 # --- Dil Ayarları ---
@@ -28,10 +28,10 @@ dataset:
 # --- Eğitim Hiperparametreleri ---
 training:
   epochs: 4
-  train_batch_size: 15
-  lr: 0.0005
+  train_batch_size: 18
+  lr: 0.002
   gradient_accumulation_steps: 4
-  percentile: 96
+  percentile: 93
   max_len: 128
   use_dynamic_max_len: True
 

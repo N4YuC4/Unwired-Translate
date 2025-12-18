@@ -22,7 +22,7 @@
   "no_btn": "Нет",
   "yes_btn": "Да",
   "history_cleared_msg": "История переводов очищена!",
-  "new_translation_title": "Новый перевод",
+  "new_translation_title": "Unwired Translate",
   "history_title": "История переводов",
   "settings_title": "Настройки",
   "dark_mode": "Темный режим",
@@ -31,5 +31,7 @@
   "nav_translate": "Перевод",
   "nav_history": "История",
   "nav_settings": "Настройки",
-  "language_select": "Язык интерфейса"
+  "language_select": "Язык интерфейса",
+  "did_you_mean": "Вы имели в виду?",
+  "copied_to_clipboard": "Скопировано в буфер обмена"
 }

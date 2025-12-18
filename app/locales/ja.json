@@ -22,7 +22,7 @@
   "no_btn": "いいえ",
   "yes_btn": "はい",
   "history_cleared_msg": "翻訳履歴が消去されました！",
-  "new_translation_title": "新規翻訳",
+  "new_translation_title": "Unwired Translate",
   "history_title": "翻訳履歴",
   "settings_title": "設定",
   "dark_mode": "ダークモード",
@@ -31,5 +31,7 @@
   "nav_translate": "翻訳",
   "nav_history": "履歴",
   "nav_settings": "設定",
-  "language_select": "インターフェース言語"
+  "language_select": "インターフェース言語",
+  "did_you_mean": "もしかして:",
+  "copied_to_clipboard": "クリップボードにコピーされました"
 }

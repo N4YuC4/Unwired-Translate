@@ -14,7 +14,7 @@ import shutil
 
 from torch.utils.data import Dataset, DataLoader
 from transformers import (
-    MT5Tokenizer,
+    MT5TokenizerFast,
     MT5ForConditionalGeneration,
     BitsAndBytesConfig,
     get_cosine_schedule_with_warmup,
@@ -234,7 +234,7 @@ def main():
     val_df = pd.read_parquet(os.path.join(processed_dir, "test.parquet"))
     logging.info(f"Train: {len(train_df)}, Val: {len(val_df)}")
 
-    tokenizer = MT5Tokenizer.from_pretrained(model_name)
+    tokenizer = MT5TokenizerFast.from_pretrained(model_name, legacy=False, from_slow=True)
 
     # 2. Max Len Hesaplama
     MAX_LEN = train_params['max_len']

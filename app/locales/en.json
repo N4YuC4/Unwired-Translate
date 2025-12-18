@@ -22,7 +22,7 @@
   "no_btn": "No",
   "yes_btn": "Yes",
   "history_cleared_msg": "Translation history cleared!",
-  "new_translation_title": "New Translation",
+  "new_translation_title": "Unwired Translate",
   "history_title": "Translation History",
   "settings_title": "Settings",
   "dark_mode": "Dark Mode",
@@ -31,5 +31,7 @@
   "nav_translate": "Translate",
   "nav_history": "History",
   "nav_settings": "Settings",
-  "language_select": "Interface Language"
-}
+  "language_select": "Interface Language",
+      "did_you_mean": "Did you mean?",
+      "copied_to_clipboard": "Copied to clipboard"
+  }

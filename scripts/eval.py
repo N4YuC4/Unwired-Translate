@@ -75,7 +75,8 @@ def main():
                 batch_source_tokens,
                 max_batch_size=batch_size, # Mevcut batch boyutu
                 beam_size=4,
-                max_decoding_length=MAX_LEN
+                max_decoding_length=MAX_LEN,
+                end_token=[tokenizer.eos_token]
             )
             
             # Detokenize etme

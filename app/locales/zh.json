@@ -22,7 +22,7 @@
   "no_btn": "否",
   "yes_btn": "是",
   "history_cleared_msg": "翻译历史已清除！",
-  "new_translation_title": "新翻译",
+  "new_translation_title": "Unwired Translate",
   "history_title": "翻译历史",
   "settings_title": "设置",
   "dark_mode": "深色模式",
@@ -31,5 +31,7 @@
   "nav_translate": "翻译",
   "nav_history": "历史",
   "nav_settings": "设置",
-  "language_select": "界面语言"
+  "language_select": "界面语言",
+  "did_you_mean": "您是指？",
+  "copied_to_clipboard": "已复制到剪贴板"
 }

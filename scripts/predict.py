@@ -5,7 +5,7 @@ import sys
 import logging
 from datetime import datetime
 import ctranslate2
-from transformers import MT5Tokenizer
+from transformers import MT5TokenizerFast
 
 # --- LOGLAMA AYARLARI ---
 log_dir = "logs/predict"
@@ -71,9 +71,14 @@ def load_model(config_path="config.yaml"):
         # Ancak convert scripti tokenizer dosyasını kopyalamıyor olabilir.
         # Güvenlik için config'deki model isminden taze bir tokenizer yükleyelim.
         
-        model_name = config['model_adi']
-        logger.info(f"Tokenizer yükleniyor: {model_name}")
-        tokenizer = MT5Tokenizer.from_pretrained(model_name)
+        # Tokenizer Yükleme (Önce local model dizininden)
+        try:
+            logger.info(f"Tokenizer yerel dizinden yükleniyor: {ct2_model_path}")
+            tokenizer = MT5TokenizerFast.from_pretrained(ct2_model_path, local_files_only=True, legacy=False, from_slow=True)
+        except Exception as e:
+            logger.warning(f"Yerel tokenizer yüklenemedi ({e}), base modelden yükleniyor: {config['model_adi']}")
+            model_name = config['model_adi']
+            tokenizer = MT5TokenizerFast.from_pretrained(model_name, legacy=False, from_slow=True)
         
         return (translator, tokenizer), config
 
@@ -103,7 +108,8 @@ def translate(model_data, text, source_lang, target_lang, max_len=128):
                 [source_tokens],
                 max_batch_size=1,
                 beam_size=4,
-                max_decoding_length=max_len
+                max_decoding_length=max_len,
+                end_token=[tokenizer.eos_token]
             )
             
             # 3. Detokenize
