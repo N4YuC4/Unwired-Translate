@@ -100,6 +100,7 @@ def main(page: ft.Page):
     loc_manager.set_language(ui_lang)
 
     page.title = loc_manager.get("app_title")
+    page.window.icon = "unwired-logo.png"
     page.padding = 0
     
     # --- Modern Tema Ayarları (Material 3) ---
@@ -417,6 +418,7 @@ def main(page: ft.Page):
 
         # Translate View
         translate_title_text.value = loc_manager.get("new_translation_title")
+        footer_text.value = loc_manager.get("eranex_product")
         did_you_mean_label.value = loc_manager.get("did_you_mean")
         source_lang_dd.label = loc_manager.get("source_label")
         target_lang_dd.label = loc_manager.get("target_label")
@@ -433,6 +435,8 @@ def main(page: ft.Page):
         # Settings View
         settings_header.value = loc_manager.get("settings_title")
         dark_mode_text.value = loc_manager.get("dark_mode")
+        about_tile.title.value = loc_manager.get("about_title")
+        about_tile.subtitle.value = loc_manager.get("eranex_product")
         clear_history_tile.title.value = loc_manager.get("clear_history_title")
         clear_history_tile.subtitle.value = loc_manager.get("clear_history_subtitle")
         ui_lang_dd.label = loc_manager.get("language_select")
@@ -471,14 +475,17 @@ def main(page: ft.Page):
         color=ft.Colors.PRIMARY,
         weight=ft.FontWeight.BOLD,
     )
-    translate_header = ft.Row(
-        [
-            ft.Icon(ft.Icons.TRANSLATE, color=ft.Colors.PRIMARY, size=30),
-            translate_title_text,
-        ],
-        alignment=ft.MainAxisAlignment.CENTER,
+    translate_header = ft.Container(
+        content=ft.Row(
+            [
+                ft.Image(src="unwired-logo.svg", width=40, height=40),
+                translate_title_text,
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
+        padding=ft.padding.only(top=20, bottom=10)
     )
-    
+
     input_stack = ft.Stack([
         input_text,
         ft.Container(
@@ -497,8 +504,6 @@ def main(page: ft.Page):
     translate_view = ft.Container(
         padding=20,
         content=ft.Column([
-            translate_header,
-            
             # Dil Seçimi
             ft.Container(
                 content=ft.Row([source_lang_dd, swap_btn, target_lang_dd], alignment=ft.MainAxisAlignment.CENTER),
@@ -533,6 +538,12 @@ def main(page: ft.Page):
     settings_header = ft.Text(loc_manager.get("settings_title"), style=ft.TextThemeStyle.HEADLINE_MEDIUM)
     dark_mode_text = ft.Text(loc_manager.get("dark_mode"), size=16)
     
+    about_tile = ft.ListTile(
+        leading=ft.Icon(ft.Icons.INFO_OUTLINE),
+        title=ft.Text(loc_manager.get("about_title")),
+        subtitle=ft.Text(loc_manager.get("eranex_product")),
+    )
+
     clear_history_tile = ft.ListTile(
         leading=ft.Icon(ft.Icons.DELETE_FOREVER, color=ft.Colors.RED),
         title=ft.Text(loc_manager.get("clear_history_title"), color=ft.Colors.RED),
@@ -577,6 +588,8 @@ def main(page: ft.Page):
                 ui_lang_dd
             ], spacing=20),
             ft.Divider(),
+            about_tile,
+            ft.Divider(),
             clear_history_tile
         ])
     )
@@ -601,6 +614,19 @@ def main(page: ft.Page):
         duration=300,
         reverse_duration=300,
         expand=True
+    )
+
+    footer_text = ft.Text(
+        loc_manager.get("eranex_product"),
+        size=10,
+        color=ft.Colors.GREY_500,
+        text_align=ft.TextAlign.CENTER,
+    )
+    
+    footer = ft.Container(
+        content=footer_text,
+        padding=10,
+        alignment=ft.alignment.center,
     )
 
     nav_rail = ft.NavigationRail(
@@ -639,7 +665,12 @@ def main(page: ft.Page):
         controls=[
             nav_rail,
             ft.VerticalDivider(width=1),
-            ft.Column([content_area, status_indicator], expand=True),
+            ft.Column([
+                translate_header,
+                content_area, 
+                footer,
+                status_indicator
+            ], expand=True),
         ],
         expand=True,
     )
@@ -670,4 +701,13 @@ def main(page: ft.Page):
     threading.Thread(target=initialize_app, args=(page, status_indicator, controls, loc_manager), daemon=True).start()
 
 if __name__ == "__main__":
-    ft.app(target=main)
+
+    # Varlıkların (ikonlar, resimler) tam yolunu belirle
+
+    assets_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "assets"))
+
+    
+
+    # Uygulamayı bu assets yolu ile başlat
+
+    ft.app(target=main, assets_dir=assets_path)

@@ -32,6 +32,9 @@
   "nav_history": "History",
   "nav_settings": "Settings",
   "language_select": "Interface Language",
-      "did_you_mean": "Did you mean?",
-      "copied_to_clipboard": "Copied to clipboard"
-  }
+  "did_you_mean": "Did you mean?",
+  "copied_to_clipboard": "Copied to clipboard",
+  "eranex_product": "Unwired Translate is an Eranex Technology product.",
+  "about_title": "About",
+  "about_subtitle": "Application information"
+}

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="170px" height="155px" viewBox="0 0 170 155">
+  <g>
+    <!-- Outer Frame Border (Black Background Layer) -->
+    <rect x="5" y="30" width="160" height="120" rx="18" ry="18" fill="none" stroke="#000000" stroke-width="14" />
+    <!-- Outer Frame (White Foreground Layer) -->
+    <rect x="5" y="30" width="160" height="120" rx="18" ry="18" fill="none" stroke="#ffffff" stroke-width="10" />
+    
+    <!-- Top Small Rect with Border -->
+    <rect x="55" y="0" width="60" height="60" rx="9" ry="9" fill="#fafafa" stroke="#000000" stroke-width="2" />
+
+    <!-- Inner Logo (The Character/Symbol) with Thin Border -->
+    <g transform="translate(45, 70) scale(3.889)">
+        <path fill="rgb(250, 104, 0)" stroke="#000000" stroke-width="0.3" d="M15.91 7.2h-1.82L10 18h1.82l1-2.7h4.32l1 2.7H20zm-2.39 6.3L15 9.6l1.48 3.9z"/>
+        <path fill="rgb(250, 104, 0)" stroke="#000000" stroke-width="0.3" fill-rule="evenodd" d="M10.79 11.77L8.48 9.51h0a15.62 15.62 0 0 0 3.4-5.91h2.67V1.8H8.18V0H6.36v1.8H0v1.79h10.15a14.06 14.06 0 0 1-2.88 4.82 14.55 14.55 0 0 1-2.1-3H3.35a16 16 0 0 0 2.71 4.1L1.44 14l1.29 1.3 4.54-4.5 2.83 2.8z"/>
+    </g>
+  </g>
+</svg>

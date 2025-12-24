@@ -43,3 +43,4 @@ build/
 dist/
 *.egg-info/
 GEMINI.md
+scripts/generate_tr_frequency_dict.py
