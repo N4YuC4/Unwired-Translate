@@ -48,8 +48,7 @@ def load_available_languages():
         logger.error(f"Dil dosyası yüklenirken hata: {e}")
         # Fallback with iso_code
         available_languages = [
-            {"name": "English", "code": "English", "iso_code": "en"},
-            {"name": "Turkish", "code": "Turkish", "iso_code": "tr"}
+            {"name": "English", "code": "English", "iso_code": "en"}
         ]
 
 def get_localized_options(loc_manager):
@@ -186,11 +185,15 @@ def main(page: ft.Page):
         on_change=save_language_settings
     )
     
+    # Karakter Sayacı
+    char_counter = ft.Text("0/100", size=12, color=ft.Colors.GREY)
+
     input_text = ft.TextField(
         label=loc_manager.get("input_label"), multiline=True, min_lines=5, max_lines=10, 
         border_color=ft.Colors.OUTLINE, border_radius=15, text_size=16,
         expand=True, hint_text=loc_manager.get("input_hint"),
-        max_length=100
+        max_length=200,
+        counter_style=ft.TextStyle(size=0, color=ft.Colors.TRANSPARENT) # Varsayılan sayacı gizle
     )
     
     # Öneri Bileşeni (Spell Checker)
@@ -210,8 +213,9 @@ def main(page: ft.Page):
         new_text = suggestion_text.value
         input_text.value = new_text
         suggestion_container.visible = False
+        on_input_change(None) # Sayacı ve zamanlayıcıyı güncelle
         page.update()
-        start_translation_thread() # Düzeltilmiş metinle tekrar çevir
+        start_translation_thread()
 
     output_text = ft.TextField(
         label=loc_manager.get("output_label"), multiline=True, min_lines=5, max_lines=10, 
@@ -231,7 +235,7 @@ def main(page: ft.Page):
                     style=ft.ButtonStyle(padding=5),
                 ),
                 right=0,
-                bottom=0,
+                top=0,
             )
         ]),
         padding=10,
@@ -256,6 +260,7 @@ def main(page: ft.Page):
         input_text.value = output_text.value
         output_text.value = in_txt
         save_language_settings()
+        on_input_change(None) # Sayacı güncelle
         page.update()
 
     swap_btn = ft.IconButton(icon=ft.Icons.SWAP_HORIZ, on_click=swap_languages, tooltip=loc_manager.get("swap_tooltip"))
@@ -276,6 +281,7 @@ def main(page: ft.Page):
                     target_lang_dd.value = parts[1].strip()
                     save_language_settings()
             
+            on_input_change(None) # Sayacı güncelle
             change_nav(0)
         except Exception as e:
             logger.error(f"Geçmişten yükleme hatası: {e}")
@@ -332,6 +338,11 @@ def main(page: ft.Page):
     # --- Mantıksal İşlemler ---
 
     def on_input_change(e):
+        # Sayacı güncelle
+        current_len = len(input_text.value) if input_text.value else 0
+        char_counter.value = f"{current_len}/100"
+        char_counter.update()
+
         # Timer özelliğini fonksiyon üzerinde sakla (Static variable simulation)
         if hasattr(on_input_change, "timer") and on_input_change.timer:
             on_input_change.timer.cancel()
@@ -533,7 +544,12 @@ def main(page: ft.Page):
                 style=ft.ButtonStyle(padding=5),
             ),
             right=5,
-            bottom=5,
+            top=5,
+        ),
+        ft.Container(
+            content=char_counter,
+            right=15,
+            bottom=10,
         )
     ])
 
