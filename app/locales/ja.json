@@ -33,5 +33,8 @@
   "nav_settings": "設定",
   "language_select": "インターフェース言語",
   "did_you_mean": "もしかして:",
-  "copied_to_clipboard": "クリップボードにコピーされました"
+  "copied_to_clipboard": "クリップボードにコピーされました",
+  "eranex_product": "Unwired TranslateはEranex Technologyの製品です。",
+  "about_title": "アプリについて",
+  "about_subtitle": "アプリケーション情報"
 }

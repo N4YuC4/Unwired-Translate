@@ -33,5 +33,8 @@
   "nav_settings": "Configuración",
   "language_select": "Idioma de la interfaz",
   "did_you_mean": "¿Quiso decir?",
-  "copied_to_clipboard": "Copiado al portapapeles"
+  "copied_to_clipboard": "Copiado al portapapeles",
+  "eranex_product": "Unwired Translate es un producto de Eranex Technology.",
+  "about_title": "Acerca de",
+  "about_subtitle": "Información de la aplicación"
 }

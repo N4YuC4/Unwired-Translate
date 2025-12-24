@@ -24,3 +24,4 @@ sentence-transformers
 requests
 ctranslate2
 symspellpy
+Babel

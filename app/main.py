@@ -5,6 +5,7 @@ import threading
 import json
 import logging
 from datetime import datetime
+from babel import Locale
 
 # Proje kök dizinini sisteme ekle
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -33,22 +34,51 @@ tokenizer = None
 config = None
 model_loaded = False
 available_languages = []
-lang_options = []
 supported_source_lang = ""
 supported_target_lang = ""
 
 # --- Yardımcı Fonksiyonlar ---
 def load_available_languages():
-    global available_languages, lang_options
+    global available_languages
     try:
         lang_file_path = os.path.join(os.path.dirname(__file__), 'languages.json')
         with open(lang_file_path, 'r', encoding='utf-8') as f:
             available_languages = json.load(f)
     except Exception as e:
         logger.error(f"Dil dosyası yüklenirken hata: {e}")
-        available_languages = [{"name": "English", "code": "English"}, {"name": "Turkish", "code": "Turkish"}]
-    finally:
-        lang_options = [ft.dropdown.Option(lang['code'], lang['name']) for lang in available_languages]
+        # Fallback with iso_code
+        available_languages = [
+            {"name": "English", "code": "English", "iso_code": "en"},
+            {"name": "Turkish", "code": "Turkish", "iso_code": "tr"}
+        ]
+
+def get_localized_options(loc_manager):
+    options = []
+    try:
+        current_locale = Locale(loc_manager.current_lang)
+    except Exception:
+        current_locale = Locale('en')
+
+    for lang in available_languages:
+        code = lang.get('code', '') # Backend code (e.g. "Turkish")
+        name = lang.get('name', code) # Display Name Fallback
+        iso_code = lang.get('iso_code', 'en') # ISO code for Babel (e.g. "tr")
+        
+        # Babel ile çeviriyi al
+        try:
+            localized_name = current_locale.languages.get(iso_code)
+            # Babel bazen None dönebilir veya dil bulunamayabilir
+            if not localized_name:
+                 localized_name = name
+            else:
+                 # İlk harfi büyük yap (Babel bazen küçük harf döndürebilir)
+                 localized_name = localized_name.title()
+        except Exception as e:
+            logger.warning(f"Babel dil çeviri hatası ({iso_code}): {e}")
+            localized_name = name
+            
+        options.append(ft.dropdown.Option(code, localized_name))
+    return options
 
 def initialize_app(page: ft.Page, status_indicator: ft.Container, controls_to_enable: list, loc_manager):
     global model, tokenizer, config, model_loaded, supported_source_lang, supported_target_lang
@@ -146,12 +176,12 @@ def main(page: ft.Page):
             logger.error(f"Ayarlar kaydedilirken hata: {err}")
 
     source_lang_dd = ft.Dropdown(
-        options=lang_options, value=initial_source_lang, label=loc_manager.get("source_label"), 
+        options=get_localized_options(loc_manager), value=initial_source_lang, label=loc_manager.get("source_label"), 
         border_radius=10, content_padding=10, filled=True, dense=True, expand=True,
         on_change=save_language_settings
     )
     target_lang_dd = ft.Dropdown(
-        options=lang_options, value=initial_target_lang, label=loc_manager.get("target_label"), 
+        options=get_localized_options(loc_manager), value=initial_target_lang, label=loc_manager.get("target_label"), 
         border_radius=10, content_padding=10, filled=True, dense=True, expand=True,
         on_change=save_language_settings
     )
@@ -159,7 +189,8 @@ def main(page: ft.Page):
     input_text = ft.TextField(
         label=loc_manager.get("input_label"), multiline=True, min_lines=5, max_lines=10, 
         border_color=ft.Colors.OUTLINE, border_radius=15, text_size=16,
-        expand=True, hint_text=loc_manager.get("input_hint")
+        expand=True, hint_text=loc_manager.get("input_hint"),
+        max_length=100
     )
     
     # Öneri Bileşeni (Spell Checker)
@@ -427,6 +458,11 @@ def main(page: ft.Page):
         input_text.hint_text = loc_manager.get("input_hint")
         output_text.label = loc_manager.get("output_label")
         translate_btn.text = loc_manager.get("translate_btn")
+        
+        # Update Language Dropdowns
+        new_opts = get_localized_options(loc_manager)
+        source_lang_dd.options = new_opts
+        target_lang_dd.options = new_opts
 
         # History View
         history_header.value = loc_manager.get("history_title")

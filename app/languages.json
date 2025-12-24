@@ -1,4 +1,4 @@
 [
-    { "name": "Turkish", "code": "Turkish" },
-    { "name": "English", "code": "English" }
+    { "name": "Turkish", "code": "Turkish", "iso_code": "tr" },
+    { "name": "English", "code": "English", "iso_code": "en" }
 ]
