@@ -98,6 +98,25 @@ def initialize_app(page: ft.Page, status_indicator: ft.Container, controls_to_en
     
     try:
         logger.info("Model yükleme işlemi başlatıldı.")
+        
+        # --- Spell Checker Ön Yükleme (Non-blocking) ---
+        # Kullanıcı ilk harfi yazana kadar sözlüklerin hazır olması için arka planda başlatıyoruz.
+        def preload_dictionaries_task():
+            try:
+                logger.info("Sözlük ön yükleme (pre-load) başlatılıyor...")
+                checker = spell_checker.SpellChecker()
+                # En sık kullanılan dilleri önceden yükle
+                # Not: Bu işlem IO içerdiği için thread içinde olması UI'ı dondurmaz.
+                checker._load_language("English")
+                checker._load_language("Turkish")
+                logger.info("Sözlük ön yükleme tamamlandı.")
+            except Exception as e:
+                logger.warning(f"Sözlük ön yükleme sırasında hata: {e}")
+
+        # Daemon thread olarak başlat (Uygulama kapanırsa bu da kapanır)
+        threading.Thread(target=preload_dictionaries_task, daemon=True).start()
+        # ------------------------------------------------
+
         model, config = predict.load_model()
         if model:
             model_loaded = True
@@ -197,14 +216,21 @@ def main(page: ft.Page):
     )
     
     # Öneri Bileşeni (Spell Checker)
-    suggestion_text = ft.Text("", color=ft.Colors.BLUE_400, weight=ft.FontWeight.BOLD)
+    suggestion_text = ft.Text("", color=ft.Colors.BLUE_400, weight=ft.FontWeight.BOLD, no_wrap=False)
     did_you_mean_label = ft.Text(loc_manager.get("did_you_mean"), color=ft.Colors.GREY_500, size=12)
     
     suggestion_container = ft.Container(
         content=ft.Row([
             did_you_mean_label,
-            ft.TextButton(content=suggestion_text, style=ft.ButtonStyle(padding=0), on_click=lambda e: apply_suggestion(e)),
-        ], spacing=5),
+            ft.Container(
+                content=ft.TextButton(
+                    content=suggestion_text, 
+                    style=ft.ButtonStyle(padding=0), 
+                    on_click=lambda e: apply_suggestion(e)
+                ),
+                expand=True
+            ),
+        ], spacing=5, alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.START),
         padding=ft.padding.only(left=10, top=5),
         visible=False
     )
@@ -380,36 +406,41 @@ def main(page: ft.Page):
         output_container.opacity = 0.5
         page.update()
         
-        threading.Thread(target=run_translation, daemon=True).start()
+        # Çeviri ve Spell Check işlemlerini paralel başlat
+        txt = input_text.value
+        src = source_lang_dd.value
+        tgt = target_lang_dd.value
 
-    def run_translation():
+        threading.Thread(target=run_translation, args=(txt, src, tgt), daemon=True).start()
+        threading.Thread(target=run_spell_check, args=(txt, src), daemon=True).start()
+
+    def run_spell_check(txt, src):
+        # Sadece kısa metinlerde ve desteklenen dillerde çalıştır
+        if src not in ["English", "Turkish"] or not txt or len(txt) > 1000:
+            return
+
         try:
-            src = source_lang_dd.value
-            tgt = target_lang_dd.value
-            txt = input_text.value
+            checker = spell_checker.SpellChecker()
+            corrected = checker.correct(txt, src)
             
-            # Spell Checker Mantığı
-            # Sadece kısa metinlerde ve desteklenen dillerde çalıştır
-            if src in ["English", "Turkish"] and txt and len(txt) < 1000:
-                try:
-                    checker = spell_checker.SpellChecker()
-                    corrected = checker.correct(txt, src)
-                    
-                    # Eğer öneri mevcut metinle aynıysa (sadece boşluk farkı olsa bile) gösterme
-                    if corrected and corrected.strip() != txt.strip():
-                         suggestion_text.value = corrected
-                         suggestion_container.visible = True
-                    else:
-                        suggestion_container.visible = False
-                        
-                except Exception as sc_err:
-                    logger.warning(f"Spell checker hatası: {sc_err}")
-                    suggestion_container.visible = False
+            # UI güncellemesi (Thread-safe olması için)
+            if corrected and corrected.strip() != txt.strip():
+                suggestion_text.value = corrected
+                suggestion_container.visible = True
+                suggestion_container.update()
             else:
-                suggestion_container.visible = False
-            
-            page.update() # UI güncelle
+                # Eğer daha önce görünürse gizle
+                if suggestion_container.visible:
+                    suggestion_container.visible = False
+                    suggestion_container.update()
+                    
+        except Exception as sc_err:
+            logger.warning(f"Spell checker hatası: {sc_err}")
 
+    def run_translation(txt, src, tgt):
+        try:
+            # Not: Spell checker artık burada değil, ayrı thread'de çalışıyor.
+            
             logger.info(f"Çeviri isteği: {src} -> {tgt}")
             
             res = predict.translate(
@@ -418,19 +449,25 @@ def main(page: ft.Page):
             )
             
             output_text.value = res
+            output_text.update() # Sadece metni güncelle
+            
             history_manager.add_to_history(txt, res, src, tgt)
-            load_history_items() # Geçmişi güncelle
+            # Geçmiş listesini güncellemek thread-safe olmayabilir, ana thread'de yapmak daha güvenli
+            # Ancak Flet genellikle bunu tolere eder. Yine de basit tutalım.
+            # load_history_items() # Bu ağır olabilir, her çeviride çağırmayalım veya optimize edelim.
+            
             logger.info("Çeviri başarılı.")
             
         except Exception as e:
             error_msg = f"{loc_manager.get('error_occurred')}{e}"
             logger.error(error_msg)
             output_text.value = error_msg
+            output_text.update()
         finally:
             translate_btn.disabled = False
             loading_indicator.visible = False
             output_container.opacity = 1.0
-            page.update()
+            page.update() # Tüm UI durumunu son kez senkronize et
 
     def toggle_theme(e):
         is_dark = e.control.value

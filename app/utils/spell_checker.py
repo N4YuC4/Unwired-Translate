@@ -19,18 +19,34 @@ class SpellChecker:
         # Varsayılan ayarlar
         self.max_edit_distance = 2
         self.prefix_length = 7
+        self.dict_paths = {}
         
-        # Sözlük yolları
+        # app/languages.json dosyasını oku ve sözlük yollarını dinamik oluştur
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.dict_paths = {
-            "en": os.path.join(base_path, "assets", "dictionaries", "frequency_dictionary_en.txt"),
-            "tr": os.path.join(base_path, "assets", "dictionaries", "frequency_dictionary_tr.txt")
-        }
+        langs_json_path = os.path.join(base_path, "languages.json")
+        dicts_dir = os.path.join(base_path, "assets", "dictionaries")
+
+        try:
+            if os.path.exists(langs_json_path):
+                import json
+                with open(langs_json_path, "r", encoding="utf-8") as f:
+                    languages = json.load(f)
+                    for lang in languages:
+                        iso = lang.get("iso_code")
+                        if iso:
+                            iso = iso.lower()
+                            # Sadece Pickle yolu
+                            self.dict_paths[iso] = os.path.join(
+                                dicts_dir, f"frequency_dictionary_{iso}.pickle"
+                            )
+            else:
+                logger.error(f"Dinamik sözlük yükleme başarısız: {langs_json_path} bulunamadı.")
+        except Exception as e:
+            logger.error(f"Dinamik sözlük yapılandırma hatası: {e}")
 
     def _load_language(self, lang_code):
-        """İlgili dilin sözlüğünü yükler (lazy loading)."""
-        # Dil kodunu normalize et (English -> en, Turkish -> tr)
-        # app/languages.json'daki yapıya göre "English" veya "en" gelebilir.
+        """İlgili dilin Pickle sözlüğünü yükler."""
+        # Dil kodunu normalize et
         code_map = {"English": "en", "Turkish": "tr"}
         lang = code_map.get(lang_code, lang_code).lower()
 
@@ -41,21 +57,23 @@ class SpellChecker:
         if lang in self._symspells:
             return self._symspells[lang]
 
-        path = self.dict_paths[lang]
-        if not os.path.exists(path):
-            logger.error(f"Sözlük dosyası bulunamadı: {path}")
+        pickle_path = self.dict_paths[lang]
+        
+        if not os.path.exists(pickle_path):
+            logger.error(f"Sözlük dosyası bulunamadı (Pickle): {pickle_path}. Lütfen önce 'scripts/generate_frequency_dict.py' scriptini çalıştırın.")
             return None
 
         try:
-            logger.info(f"Sözlük yükleniyor: {lang} ({path})")
+            logger.info(f"Sözlük yükleniyor (Pickle): {lang}")
             sym_spell = SymSpell(max_dictionary_edit_distance=self.max_edit_distance, prefix_length=self.prefix_length)
-            # Term index 0, count index 1 (standart format)
-            if not sym_spell.load_dictionary(path, term_index=0, count_index=1):
-                logger.error(f"Sözlük yüklenemedi: {path}")
-                return None
             
-            self._symspells[lang] = sym_spell
-            return sym_spell
+            if sym_spell.load_pickle(pickle_path):
+                self._symspells[lang] = sym_spell
+                logger.info(f"Sözlük başarıyla yüklendi: {lang}")
+                return sym_spell
+            else:
+                logger.error(f"Pickle dosyası yüklenemedi: {pickle_path}")
+                return None
         except Exception as e:
             logger.error(f"Sözlük yükleme hatası ({lang}): {e}")
             return None
@@ -81,14 +99,29 @@ class SpellChecker:
         corrected_tokens = []
         
         for token in tokens:
-            # Sadece kelimeyse ve tamamen rakam değilse düzeltme dene
+            # Sadece harf içeren kelimeler için işlem yap
             if re.match(r'^\w+$', token) and not token.isdigit():
-                # Verbosity.TOP: En iyi tek sonucu döndür
-                suggestions = sym_spell.lookup(token, Verbosity.TOP, max_edit_distance=2, transfer_casing=True)
-                if suggestions:
-                    corrected_tokens.append(suggestions[0].term)
+                # 1. Önce kelime sözlükte var mı bak (Edit distance 0)
+                exact_match = sym_spell.lookup(token, Verbosity.TOP, max_edit_distance=0)
+                
+                if exact_match:
+                    corrected_tokens.append(token)
                 else:
-                    corrected_tokens.append(token) # Öneri yoksa orijinali koru
+                    # 2. Sözlükte yoksa, önce "Kelime Bölümlendirme" (Word Segmentation) dene
+                    # Bu 'yada' -> 'ya da' gibi durumları yakalamak için en iyi yoldur.
+                    seg_result = sym_spell.word_segmentation(token, max_edit_distance=0)
+                    
+                    # Eğer bölme işlemi sonucunda 1'den fazla kelime çıktıysa ve 
+                    # bu kelimeler sözlükte güçlüyse bunu kullan.
+                    if seg_result.segmented_string and " " in seg_result.segmented_string:
+                        corrected_tokens.append(seg_result.segmented_string)
+                    else:
+                        # 3. Bölme işlemi sonuç vermediyse klasik düzeltme (lookup_compound) dene
+                        suggestions = sym_spell.lookup_compound(token, max_edit_distance=2, transfer_casing=True)
+                        if suggestions:
+                            corrected_tokens.append(suggestions[0].term)
+                        else:
+                            corrected_tokens.append(token)
             else:
                 # Kelime değilse (noktalama, boşluk) olduğu gibi ekle
                 corrected_tokens.append(token)
