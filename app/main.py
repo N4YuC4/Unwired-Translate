@@ -186,7 +186,7 @@ def main(page: ft.Page):
     )
     
     # Karakter Sayacı
-    char_counter = ft.Text("0/100", size=12, color=ft.Colors.GREY)
+    char_counter = ft.Text("0/200", size=12, color=ft.Colors.GREY)
 
     input_text = ft.TextField(
         label=loc_manager.get("input_label"), multiline=True, min_lines=5, max_lines=10, 
@@ -281,8 +281,11 @@ def main(page: ft.Page):
                     target_lang_dd.value = parts[1].strip()
                     save_language_settings()
             
-            on_input_change(None) # Sayacı güncelle
             change_nav(0)
+            # Sayfa değiştikten sonra güncelle
+            on_input_change(None) 
+            page.update()
+
         except Exception as e:
             logger.error(f"Geçmişten yükleme hatası: {e}")
 
@@ -340,8 +343,11 @@ def main(page: ft.Page):
     def on_input_change(e):
         # Sayacı güncelle
         current_len = len(input_text.value) if input_text.value else 0
-        char_counter.value = f"{current_len}/100"
-        char_counter.update()
+        char_counter.value = f"{current_len}/200"
+        
+        # Sadece kontrol sayfadaysa güncelle
+        if char_counter.page:
+            char_counter.update()
 
         # Timer özelliğini fonksiyon üzerinde sakla (Static variable simulation)
         if hasattr(on_input_change, "timer") and on_input_change.timer:
@@ -388,11 +394,14 @@ def main(page: ft.Page):
                 try:
                     checker = spell_checker.SpellChecker()
                     corrected = checker.correct(txt, src)
-                    if corrected and corrected != txt:
-                        suggestion_text.value = corrected
-                        suggestion_container.visible = True
+                    
+                    # Eğer öneri mevcut metinle aynıysa (sadece boşluk farkı olsa bile) gösterme
+                    if corrected and corrected.strip() != txt.strip():
+                         suggestion_text.value = corrected
+                         suggestion_container.visible = True
                     else:
                         suggestion_container.visible = False
+                        
                 except Exception as sc_err:
                     logger.warning(f"Spell checker hatası: {sc_err}")
                     suggestion_container.visible = False

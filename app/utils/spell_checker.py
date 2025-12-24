@@ -62,8 +62,7 @@ class SpellChecker:
 
     def correct(self, text, lang_code):
         """
-        Metni denetler ve düzeltilmiş halini döndürür.
-        Eğer düzeltme yoksa veya hata varsa None döner.
+        Metni denetler, kelime hatalarını düzeltir ve noktalama işaretlerini yönetir.
         """
         if not text or not text.strip():
             return None
@@ -72,19 +71,45 @@ class SpellChecker:
         if not sym_spell:
             return None
 
-        # Compound Check: Cümle bazlı düzeltme (kelime kelime değil, bağlamı da gözetmeye çalışır - ama bigram yoksa sadece kelime bazlıdır)
-        # transfer_casing=True: Büyük/küçük harf yapısını korur.
-        try:
-            suggestions = sym_spell.lookup_compound(text, max_edit_distance=2, transfer_casing=True)
-            
-            if suggestions:
-                best_suggestion = suggestions[0].term
-                # Eğer öneri orijinal metinle aynıysa None dön
-                if best_suggestion == text:
-                    return None
-                return best_suggestion
-        except Exception as e:
-            logger.error(f"Düzeltme hatası: {e}")
-            return None
+        import re
 
-        return None
+        # 1. Metni parçalara ayır: Kelimeler ve diğer karakterler (noktalama, boşluk vs.)
+        # (\w+): Kelimeler, ([^\w\s]+): Noktalama işaretleri, (\s+): Boşluklar
+        # Bu regex grubu her şeyi yakalar ve sırasını korur.
+        tokens = re.split(r'(\w+)', text)
+        
+        corrected_tokens = []
+        
+        for token in tokens:
+            # Sadece kelimeyse ve tamamen rakam değilse düzeltme dene
+            if re.match(r'^\w+$', token) and not token.isdigit():
+                # Verbosity.TOP: En iyi tek sonucu döndür
+                suggestions = sym_spell.lookup(token, Verbosity.TOP, max_edit_distance=2, transfer_casing=True)
+                if suggestions:
+                    corrected_tokens.append(suggestions[0].term)
+                else:
+                    corrected_tokens.append(token) # Öneri yoksa orijinali koru
+            else:
+                # Kelime değilse (noktalama, boşluk) olduğu gibi ekle
+                corrected_tokens.append(token)
+        
+        corrected_text = "".join(corrected_tokens)
+
+        # 2. Temel Dil Bilgisi Kuralları
+        
+        # Baş harfi büyüt (Eğer ilk karakter harfse)
+        corrected_text = corrected_text.strip()
+        if corrected_text and corrected_text[0].islower():
+             corrected_text = corrected_text[0].upper() + corrected_text[1:]
+        
+        # Cümle sonu noktalama işareti kontrolü
+        # Eğer cümle bir harf veya rakamla bitiyorsa nokta ekle.
+        # Zaten . ! ? : ; gibi bir şey varsa dokunma.
+        if corrected_text and corrected_text[-1].isalnum():
+             corrected_text += "."
+
+        # Eğer sonuç orijinalle aynıysa (boşluk temizliği hariç) None dön
+        if corrected_text.strip() == text.strip():
+            return None
+            
+        return corrected_text
