@@ -44,3 +44,8 @@ dist/
 *.egg-info/
 GEMINI.md
 scripts/generate_tr_frequency_dict.py
+
+# 8. Üretilen Sözlük Dosyaları (Generated Dictionaries)
+app/assets/dictionaries/*.pickle
+app/assets/dictionaries/*.parquet
+

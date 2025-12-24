@@ -1,142 +1,93 @@
-# Unwired Translate 🌍
+# Unwired Translate
 
-**Unwired Translate**, Google'ın **mT5 (Multilingual T5)** modelini temel alan, **16-bit LoRA** tekniği ile eğitilmiş ve **8-bit CTranslate2** ile optimize edilmiş, modern bir **Flet** arayüzü sunan açık kaynaklı bir makine çevirisi projesidir.
-
-Bu proje; veri toplama (scraping), anlamsal veri temizleme (semantic cleaning), model eğitimi ve masaüstü uygulaması geliştirme süreçlerinin tamamını kapsayan uçtan uca (end-to-end) bir çözümdür.
-
----
-
-## 🚀 Performance & Experiments (Latest Run)
-
-Modelin eğitim süreçleri, hiperparametre optimizasyonu ve detaylı performans metrikleri **Kaggle** üzerinde şeffaf bir şekilde dökümante edilmiştir. mT5-small gibi küçük modellerde kararlılığı artırmak için eğitim **16-bit Float16** hassasiyetinde yapılırken, son kullanıcıya sunulan model **int8 (8-bit)** quantization ile optimize edilmiştir.
-
-📊 **Kaggle Notebook & Eğitim Logları:** [Kaggle Notebook](https://www.kaggle.com/code/n4yuc4/t5-model-based-machine-translation)
+<div align="center">
+  <img src="app/assets/unwired-logo.png" alt="Unwired Translate Logo" width="128" height="128">
+  <br>
+  <h3>Yapay Zeka Destekli, Modern ve Hızlı Masaüstü Çeviri Uygulaması</h3>
+  <p>EraneX Technology Tarafından Geliştirilmiştir.</p>
+</div>
 
 ---
 
-## 🛠 Features
+**Unwired Translate**, en son yapay zeka teknolojilerini (Google mT5, LoRA, CTranslate2) modern bir arayüzle (Flet) birleştiren, yüksek performanslı ve kullanıcı dostu bir masaüstü çeviri aracıdır. Düşük donanım kaynaklarında bile hızlı ve akıcı çalışacak şekilde optimize edilmiştir.
 
-* **Advanced NLP Pipeline:**
-    * **Semantic Cleaning:** `SentenceTransformers` kullanılarak yapılan anlamsal benzerlik analizi ile düşük kaliteli çeviri çiftlerinin elenmesi.
-    * **Data Preprocessing:** Parquet formatında optimize edilmiş veri yükleme ve temizleme süreçleri.
+## 🚀 Öne Çıkan Özellikler
 
-* **Efficient Fine-Tuning & Optimization:**
-    * **16-bit LoRA Training:** Model kararlılığı için 16-bit Float16/Mixed-Precision eğitimi.
-    * **8-bit CTranslate2 Inference:** Çıkarım (inference) aşamasında int8 quantization ile maksimum hız ve minimum CPU/GPU kullanımı.
+*   **⚡ Yüksek Performans:** 16-bit LoRA eğitimi ve CTranslate2 (int8 quantization) motoru ile şimşek hızında çeviri.
+*   **🎨 Modern Arayüz (Material 3):** Flet ile geliştirilmiş, göz yormayan, şık ve responsive tasarım. Aydınlık ve Karanlık mod desteği.
+*   **✨ Akıllı Metin Düzeltme (Spell Checker):**
+    *   Yazarken anlık denetim.
+    *   **Hibrit Algoritma:** Yazım hatalarını düzeltir ("yanlız" -> "yalnız") ve bitişik kelimeleri ayırır ("yada" -> "ya da").
+    *   **Alternatifli Öneriler:** Size en uygun 3 alternatifi sunar.
+    *   **Noktalama Koruma:** Metninizin yapısını bozmadan düzeltme yapar.
+*   **🌍 Çok Dilli Destek:** Arayüz dili otomatik olarak algılanır ve dinamik olarak çevrilir (Babel entegrasyonu).
+*   **📜 Gelişmiş Geçmiş:** Çevirileriniz kaydedilir, tek tıkla geri yüklenebilir.
+*   **🛠️ MLOps ve Otomasyon:** Eğitim verilerinden otomatik sözlük oluşturma ve optimize etme araçları.
 
-* **Modern GUI (Flet):**
-    * **Responsive Tasarım:** Masaüstü ve mobil ekran boyutlarına tam uyum.
-    * **Akıllı Metin Düzeltme:** `SymSpell` entegrasyonu ile "Bunu mu demek istediniz?" önerileri.
-    * **Gelişmiş Geçmiş Yönetimi:** Tıklanabilir geçmiş öğeleri ile hızlı tekrar çeviri.
-    * **Karanlık/Aydınlık mod** ve 12+ dil desteği.
+## 📦 Kurulum
 
----
+1.  **Depoyu Klonlayın:**
+    ```bash
+    git clone https://github.com/KullaniciAdiniz/Unwired-Translate.git
+    cd Unwired-Translate
+    ```
 
-## 📂 Project Structure
+2.  **Sanal Ortam Oluşturun (Önerilen):**
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # Linux/Mac
+    # venv\Scripts\activate   # Windows
+    ```
+
+3.  **Bağımlılıkları Yükleyin:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+## 🛠️ Kullanım
+
+> **Not:** `.gitignore` ayarları gereği `artifacts/`, `datasets/` ve `models/` klasörleri Git deposuna dahil edilmemiştir. Uygulamayı kullanmadan önce kendi veri setinizi hazırlamanız veya eğitilmiş model dosyalarını ilgili dizine yerleştirmeniz gerekmektedir.
+
+### 1. Sözlükleri Oluşturma (İlk Kurulum)
+Uygulamanın akıllı yazım denetimi özelliğinin çalışması için frekans sözlüklerinin oluşturulması gerekir. Bu işlem `artifacts/processed_data/` altındaki eğitim verilerini tarar ve optimize edilmiş `.pickle` dosyaları üretir.
 
 ```bash
-Unwired-Translate/
-├── app/
-│   ├── main.py              # Flet tabanlı GUI uygulaması
-│   ├── locales/             # Arayüz dil dosyaları (JSON)
-│   ├── assets/dictionaries/ # Yazım denetimi sözlükleri
-│   └── utils/               # Spell Checker, History, Localization, Settings
-├── scripts/
-│   ├── train.py             # 16-bit LoRA eğitim ve CTranslate2 dönüşüm betiği
-│   ├── predict.py           # 8-bit CTranslate2 tabanlı hızlı inference betiği
-│   ├── eval.py              # METEOR skoru hesaplama
-│   ├── data_preprocessing.py # Veri birleştirme ve train/test ayırma
-│   └── clean_and_convert...py # Veri temizleme ve Parquet formatına dönüştürme
-├── config.yaml              # Tüm hiperparametrelerin yönetildiği konfigürasyon
-├── requirements.txt         # Proje bağımlılıkları
-└── README.md
+python scripts/generate_frequency_dict.py
 ```
 
----
+### 2. Uygulamayı Başlatma
+Arayüzü başlatmak için:
 
-## ⚙️ Installation
-
-1. **Repoyu klonlayın:**
-```bash
-git clone https://github.com/n4yuc4/unwired-translate.git
-cd unwired-translate
-```
-
-2. **Sanal ortam oluşturun (Önerilen):**
-```bash
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-```
-
-3. **Bağımlılıkları yükleyin:**
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## 💻 Usage
-
-### 1. Uygulamayı Çalıştırma (GUI)
-Eğitilmiş modeli arayüz üzerinden kullanmak için:
 ```bash
 python app/main.py
 ```
 
-### 2. Model Eğitimi (Training)
-Yeni bir model eğitmek, adaptörleri birleştirmek ve 8-bit CTranslate2 formatına dönüştürmek için:
+### 3. Model Eğitimi (Geliştiriciler İçin)
+Kendi modelinizi eğitmek veya ince ayar yapmak isterseniz:
+
 ```bash
 python scripts/train.py
 ```
 
-### 3. Veri Seti Hazırlama
+### 4. Komut Satırı Çevirisi (CLI)
+Arayüz olmadan hızlı test yapmak için:
+
 ```bash
-# 1. Ham metinleri temizleme ve Parquet formatına dönüştürme
-# Kullanım: python scripts/clean_and_convert_to_parquet.py <kaynak_dil> <hedef_dil> <veri_seti_adi>
-python scripts/clean_and_convert_to_parquet.py en tr my_dataset
-
-# 2. Farklı veri setlerini birleştirme ve train/test setlerini oluşturma
-python scripts/data_preprocessing.py
+python scripts/predict.py "Merhaba dünya" --src Turkish --tgt English
 ```
 
-### 4. CLI Üzerinden Çeviri ve Değerlendirme
-```bash
-# Tekil çeviri testi
-python scripts/predict.py "Hello, how are you?" --src English --tgt Turkish
+## 📂 Proje Yapısı
 
-# Model performansını METEOR skoru ile test etme
-python scripts/eval.py
-```
+*   `app/`: Uygulama kaynak kodları (UI, mantık, yerelleştirme).
+*   `scripts/`: Yapay zeka eğitimi, veri işleme ve yardımcı araçlar.
+*   `models/`: Eğitilmiş model dosyaları.
+*   `artifacts/`: Eğitim verileri ve işlenmiş dosyalar.
+*   `config.yaml`: Proje yapılandırma dosyası.
 
----
+## 🤝 Katkıda Bulunma
 
-## 🔧 Configuration (`config.yaml`)
-
-Proje modüler bir yapıdadır ve tüm ayarlar `config.yaml` üzerinden yönetilir:
-```yaml
-model_name: "google/mt5-small"
-training:
-  precision: "16-mixed" # 16-bit hassasiyet
-  epochs: 5
-  learning_rate: 0.0001
-```
-
----
-
-## 🛡️ Git Ignore & Local Files
-Aşağıdaki dizinler çalışma anında üretilir ve repo boyutunu korumak için `.gitignore` kapsamındadır:
-* `/models/`: Eğitilmiş ve 8-bit'e dönüştürülmüş CTranslate2 model dosyaları.
-* `/artifacts/`: Uygulama ayarları (`app_settings.json`) ve çeviri geçmişi (`translation_history.json`).
-* `/datasets/`: Ham ve işlenmiş eğitim verileri.
-* `logs/`: Uygulama ve eğitim logları.
-
----
-
-## 🤝 Contributing
 Katkılarınızı bekliyoruz! Lütfen bir "Issue" açarak veya "Pull Request" göndererek projeye destek olun.
 
-## 📜 License
-Bu proje [MIT License](LICENSE) altında lisanslanmıştır.
+## 📄 Lisans
 
----
-**Developed by [Nazmi Yücel Çan](https://github.com/N4YuC4)**
+Bu proje [MIT Lisansı](LICENSE) altında lisanslanmıştır.
