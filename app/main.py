@@ -216,30 +216,23 @@ def main(page: ft.Page):
     )
     
     # Öneri Bileşeni (Spell Checker)
-    suggestion_text = ft.Text("", color=ft.Colors.BLUE_400, weight=ft.FontWeight.BOLD, no_wrap=False)
+    # Birden fazla öneri için Row içinde dinamik butonlar olacak
+    suggestions_row = ft.Row(spacing=10, wrap=True)
     did_you_mean_label = ft.Text(loc_manager.get("did_you_mean"), color=ft.Colors.GREY_500, size=12)
     
     suggestion_container = ft.Container(
         content=ft.Row([
             did_you_mean_label,
-            ft.Container(
-                content=ft.TextButton(
-                    content=suggestion_text, 
-                    style=ft.ButtonStyle(padding=0), 
-                    on_click=lambda e: apply_suggestion(e)
-                ),
-                expand=True
-            ),
-        ], spacing=5, alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.START),
+            ft.Container(content=suggestions_row, expand=True)
+        ], spacing=5, alignment=ft.MainAxisAlignment.START),
         padding=ft.padding.only(left=10, top=5),
         visible=False
     )
     
-    def apply_suggestion(e):
-        new_text = suggestion_text.value
-        input_text.value = new_text
+    def apply_suggestion(text):
+        input_text.value = text
         suggestion_container.visible = False
-        on_input_change(None) # Sayacı ve zamanlayıcıyı güncelle
+        on_input_change(None) 
         page.update()
         start_translation_thread()
 
@@ -421,15 +414,23 @@ def main(page: ft.Page):
 
         try:
             checker = spell_checker.SpellChecker()
-            corrected = checker.correct(txt, src)
+            suggestions = checker.correct(txt, src) # Artık liste dönüyor
             
-            # UI güncellemesi (Thread-safe olması için)
-            if corrected and corrected.strip() != txt.strip():
-                suggestion_text.value = corrected
+            # UI güncellemesi
+            if suggestions:
+                suggestions_row.controls.clear()
+                for sugg in suggestions:
+                    # Lambda içinde değişkeni yakalamak için default argüman kullan
+                    btn = ft.TextButton(
+                        text=sugg, 
+                        style=ft.ButtonStyle(color=ft.Colors.BLUE_400),
+                        on_click=lambda e, s=sugg: apply_suggestion(s)
+                    )
+                    suggestions_row.controls.append(btn)
+                
                 suggestion_container.visible = True
                 suggestion_container.update()
             else:
-                # Eğer daha önce görünürse gizle
                 if suggestion_container.visible:
                     suggestion_container.visible = False
                     suggestion_container.update()
@@ -601,24 +602,35 @@ def main(page: ft.Page):
 
     translate_view = ft.Container(
         padding=20,
-        content=ft.Column([
-            # Dil Seçimi
+        content=ft.Stack([
+            # Ana İçerik (Kaydırılabilir)
+            ft.Column([
+                # Dil Seçimi
+                ft.Container(
+                    content=ft.Row([source_lang_dd, swap_btn, target_lang_dd], alignment=ft.MainAxisAlignment.CENTER),
+                    padding=ft.padding.only(bottom=10)
+                ),
+                
+                ft.Divider(),
+                
+                # Metin Alanları (ResponsiveRow ile)
+                ft.ResponsiveRow([
+                    ft.Column(col={"sm": 12, "md": 6}, controls=[input_stack, suggestion_container]),
+                    ft.Column(col={"sm": 12, "md": 6}, controls=[output_container]),
+                ]),
+                
+                ft.Row([loading_indicator], alignment=ft.MainAxisAlignment.CENTER),
+                # Buton için boşluk bırak (Stack içinde buton üzerine gelmesin diye)
+                ft.Container(height=80) 
+            ], scroll=ft.ScrollMode.AUTO, expand=True),
+            
+            # Sabit Çeviri Butonu (Sağ Alt)
             ft.Container(
-                content=ft.Row([source_lang_dd, swap_btn, target_lang_dd], alignment=ft.MainAxisAlignment.CENTER),
-                padding=ft.padding.only(bottom=10)
-            ),
-            
-            ft.Divider(),
-            
-            # Metin Alanları (ResponsiveRow ile)
-            ft.ResponsiveRow([
-                ft.Column(col={"sm": 12, "md": 6}, controls=[input_stack, suggestion_container]),
-                ft.Column(col={"sm": 12, "md": 6}, controls=[output_container]),
-            ]),
-            
-            ft.Row([loading_indicator], alignment=ft.MainAxisAlignment.CENTER),
-            ft.Row([translate_btn], alignment=ft.MainAxisAlignment.END)
-        ], scroll=ft.ScrollMode.AUTO)
+                content=translate_btn,
+                right=0,
+                bottom=0,
+            )
+        ])
     )
 
     history_header = ft.Text(loc_manager.get("history_title"), style=ft.TextThemeStyle.HEADLINE_MEDIUM, color=ft.Colors.PRIMARY)

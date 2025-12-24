@@ -80,69 +80,82 @@ class SpellChecker:
 
     def correct(self, text, lang_code):
         """
-        Metni denetler, kelime hatalarını düzeltir ve noktalama işaretlerini yönetir.
+        Metni denetler ve olası düzeltmeleri (en fazla 3) liste olarak döndürür.
         """
         if not text or not text.strip():
-            return None
+            return []
 
         sym_spell = self._load_language(lang_code)
         if not sym_spell:
-            return None
+            return []
 
         import re
+        import itertools
 
-        # 1. Metni parçalara ayır: Kelimeler ve diğer karakterler (noktalama, boşluk vs.)
-        # (\w+): Kelimeler, ([^\w\s]+): Noktalama işaretleri, (\s+): Boşluklar
-        # Bu regex grubu her şeyi yakalar ve sırasını korur.
+        # Regex ile ayır
         tokens = re.split(r'(\w+)', text)
         
-        corrected_tokens = []
+        # Her token için olası düzeltmelerin listesini tutacağız
+        # Örn: [['Merhaba'], [' '], ['dunya', 'dünya'], ['.']]
+        token_options = []
         
         for token in tokens:
+            options = []
+            
             # Sadece harf içeren kelimeler için işlem yap
             if re.match(r'^\w+$', token) and not token.isdigit():
-                # 1. Önce kelime sözlükte var mı bak (Edit distance 0)
+                # 1. Tam eşleşme var mı?
                 exact_match = sym_spell.lookup(token, Verbosity.TOP, max_edit_distance=0)
-                
                 if exact_match:
-                    corrected_tokens.append(token)
+                    options.append(token)
                 else:
-                    # 2. Sözlükte yoksa, önce "Kelime Bölümlendirme" (Word Segmentation) dene
-                    # Bu 'yada' -> 'ya da' gibi durumları yakalamak için en iyi yoldur.
+                    # 2. Kelime Bölümlendirme (Segmentation) - "yada" -> "ya da"
                     seg_result = sym_spell.word_segmentation(token, max_edit_distance=0)
-                    
-                    # Eğer bölme işlemi sonucunda 1'den fazla kelime çıktıysa ve 
-                    # bu kelimeler sözlükte güçlüyse bunu kullan.
                     if seg_result.segmented_string and " " in seg_result.segmented_string:
-                        corrected_tokens.append(seg_result.segmented_string)
-                    else:
-                        # 3. Bölme işlemi sonuç vermediyse klasik düzeltme (lookup_compound) dene
-                        suggestions = sym_spell.lookup_compound(token, max_edit_distance=2, transfer_casing=True)
-                        if suggestions:
-                            corrected_tokens.append(suggestions[0].term)
-                        else:
-                            corrected_tokens.append(token)
+                        options.append(seg_result.segmented_string)
+                    
+                    # 3. Klasik Düzeltme (Lookup) - "yada" -> "yana", "yara"
+                    # lookup_compound sadece en iyi sonucu verir, alternatifleri vermez.
+                    # Bu yüzden tek kelime için 'lookup' kullanıyoruz.
+                    suggestions = sym_spell.lookup(token, Verbosity.CLOSEST, max_edit_distance=2, transfer_casing=True)
+                    
+                    # En iyi 3 farklı öneriyi al
+                    for suggestion in suggestions:
+                        if len(options) >= 3:
+                            break
+                        if suggestion.term not in options:
+                            options.append(suggestion.term)
+                    
+                    # Eğer hiç öneri yoksa orijinali ekle
+                    if not options:
+                        options.append(token)
             else:
-                # Kelime değilse (noktalama, boşluk) olduğu gibi ekle
-                corrected_tokens.append(token)
-        
-        corrected_text = "".join(corrected_tokens)
-
-        # 2. Temel Dil Bilgisi Kuralları
-        
-        # Baş harfi büyüt (Eğer ilk karakter harfse)
-        corrected_text = corrected_text.strip()
-        if corrected_text and corrected_text[0].islower():
-             corrected_text = corrected_text[0].upper() + corrected_text[1:]
-        
-        # Cümle sonu noktalama işareti kontrolü
-        # Eğer cümle bir harf veya rakamla bitiyorsa nokta ekle.
-        # Zaten . ! ? : ; gibi bir şey varsa dokunma.
-        if corrected_text and corrected_text[-1].isalnum():
-             corrected_text += "."
-
-        # Eğer sonuç orijinalle aynıysa (boşluk temizliği hariç) None dön
-        if corrected_text.strip() == text.strip():
-            return None
+                # Kelime değilse olduğu gibi ekle
+                options.append(token)
             
-        return corrected_text
+            token_options.append(options)
+
+        # Cartesian Product: Tüm olasılıkları birleştir
+        # Bu işlem çok sayıda kombinasyon üretebilir, bu yüzden sınırlayalım.
+        # Sadece ilk 3 kombinasyonu alacağız.
+        # itertools.product(*token_options) tüm kombinasyonları verir.
+        
+        results = []
+        # En fazla 50 kombinasyon dene, en iyi 3 farklıyı seç
+        for combination in itertools.islice(itertools.product(*token_options), 50):
+            sentence = "".join(combination)
+            
+            # Dil Bilgisi Kuralları
+            sentence = sentence.strip()
+            if sentence and sentence[0].islower():
+                sentence = sentence[0].upper() + sentence[1:]
+            
+            if sentence and sentence[-1].isalnum():
+                sentence += "."
+            
+            if sentence.strip() != text.strip() and sentence not in results:
+                results.append(sentence)
+                if len(results) >= 3:
+                    break
+        
+        return results
